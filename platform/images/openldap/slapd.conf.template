@@ -1,0 +1,44 @@
+include         /opt/openldap/etc/openldap/schema/core.schema
+include         /opt/openldap/etc/openldap/schema/cosine.schema
+include         /opt/openldap/etc/openldap/schema/inetorgperson.schema
+
+pidfile         /run/openldap/slapd.pid
+argsfile        /run/openldap/slapd.args
+modulepath      /opt/openldap/libexec/openldap
+moduleload      back_mdb.la
+moduleload      memberof.la
+moduleload      refint.la
+
+TLSCertificateFile      /run/certs/ldap.crt
+TLSCertificateKeyFile   /run/certs/ldap.key
+TLSCACertificateFile    /run/certs/ca.crt
+TLSProtocolMin          3.3
+
+database        mdb
+maxsize         67108864
+suffix          "dc=lakehouse,dc=local"
+rootdn          "cn=admin,dc=lakehouse,dc=local"
+rootpw          __LDAP_ADMIN_HASH__
+directory       /var/lib/openldap/data
+index           objectClass eq
+index           uid,cn,mail eq,pres,sub
+index           member,memberOf eq
+
+access to attrs=userPassword
+  by self write
+  by dn.exact="cn=admin,dc=lakehouse,dc=local" write
+  by anonymous auth
+  by * none
+access to *
+  by dn.exact="cn=admin,dc=lakehouse,dc=local" manage
+  by users read
+  by * none
+
+overlay         memberof
+memberof-group-oc groupOfNames
+memberof-member-ad member
+memberof-memberof-ad memberOf
+memberof-refint TRUE
+
+overlay         refint
+refint_attributes memberof member manager owner

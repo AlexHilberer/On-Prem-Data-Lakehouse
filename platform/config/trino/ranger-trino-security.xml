@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>ranger.plugin.trino.policy.rest.url</name>
+    <value>http://ranger-admin:6080</value>
+  </property>
+  <property>
+    <name>ranger.plugin.trino.service.name</name>
+    <value>trino_lakehouse</value>
+  </property>
+  <property>
+    <name>ranger.plugin.trino.policy.pollIntervalMs</name>
+    <value>30000</value>
+  </property>
+  <property>
+    <name>ranger.plugin.trino.use.rangerGroups</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>ranger.plugin.trino.use.only.rangerGroups</name>
+    <value>true</value>
+  </property>
+</configuration>
+

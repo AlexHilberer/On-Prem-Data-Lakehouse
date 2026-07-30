@@ -1,0 +1,20 @@
+{
+  "name": "engineers-all-data",
+  "service": "trino_lakehouse",
+  "policyType": 0,
+  "isEnabled": true,
+  "isAuditEnabled": true,
+  "resources": {
+    "catalog": {"values": ["lakehouse"], "isExcludes": false, "isRecursive": false},
+    "schema": {"values": ["*"], "isExcludes": false, "isRecursive": false},
+    "table": {"values": ["*"], "isExcludes": false, "isRecursive": false},
+    "column": {"values": ["*"], "isExcludes": false, "isRecursive": false}
+  },
+  "policyItems": [{
+    "groups": ["lakehouse_engineers"],
+    "accesses": [
+      {"type": "all", "isAllowed": true}
+    ],
+    "delegateAdmin": false
+  }]
+}

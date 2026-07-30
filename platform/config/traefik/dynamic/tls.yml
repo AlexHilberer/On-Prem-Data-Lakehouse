@@ -1,0 +1,9 @@
+tls:
+  certificates:
+    - certFile: /certs/gateway.crt
+      keyFile: /certs/gateway.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/gateway.crt
+        keyFile: /certs/gateway.key

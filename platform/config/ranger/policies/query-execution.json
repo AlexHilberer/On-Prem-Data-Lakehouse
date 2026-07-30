@@ -1,0 +1,15 @@
+{
+  "name": "all - queryid",
+  "service": "trino_lakehouse",
+  "policyType": 0,
+  "isEnabled": true,
+  "isAuditEnabled": true,
+  "resources": {
+    "queryId": {"values": ["*"], "isExcludes": false, "isRecursive": false}
+  },
+  "policyItems": [{
+    "groups": ["lakehouse_engineers", "lakehouse_analysts", "lakehouse_services"],
+    "accesses": [{"type": "execute", "isAllowed": true}],
+    "delegateAdmin": false
+  }]
+}

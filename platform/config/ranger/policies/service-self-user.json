@@ -1,0 +1,15 @@
+{
+  "name": "service-self-user",
+  "service": "trino_lakehouse",
+  "policyType": 0,
+  "isEnabled": true,
+  "isAuditEnabled": true,
+  "resources": {
+    "trinouser": {"values": ["svc_cube"], "isExcludes": false, "isRecursive": false}
+  },
+  "policyItems": [{
+    "users": ["svc_cube"],
+    "accesses": [{"type": "impersonate", "isAllowed": true}],
+    "delegateAdmin": false
+  }]
+}

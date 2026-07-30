@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>xasecure.audit.is.enabled</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>xasecure.audit.destination.log4j</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>xasecure.audit.destination.log4j.logger</name>
+    <value>xaaudit</value>
+  </property>
+</configuration>
+

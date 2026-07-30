@@ -1,0 +1,14 @@
+.env
+platform/config/pki/*
+!platform/config/pki/.gitkeep
+platform/config/garage/garage.generated.toml
+platform/config/trino/dbeaver-trino-truststore.p12
+operations/backups/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+logs/
+.DS_Store
+.idea/
+.vscode/

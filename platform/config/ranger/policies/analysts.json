@@ -1,0 +1,19 @@
+{
+  "name": "analysts-gold-read-only",
+  "service": "trino_lakehouse",
+  "policyType": 0,
+  "isEnabled": true,
+  "isAuditEnabled": true,
+  "resources": {
+    "catalog": {"values": ["lakehouse"], "isExcludes": false, "isRecursive": false},
+    "schema": {"values": ["gold"], "isExcludes": false, "isRecursive": false},
+    "table": {"values": ["*"], "isExcludes": false, "isRecursive": false},
+    "column": {"values": ["*"], "isExcludes": false, "isRecursive": false}
+  },
+  "policyItems": [{
+    "groups": ["lakehouse_analysts", "lakehouse_services"],
+    "accesses": [{"type": "select", "isAllowed": true}],
+    "delegateAdmin": false
+  }]
+}
+

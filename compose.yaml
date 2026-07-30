@@ -1,0 +1,576 @@
+name: ${COMPOSE_PROJECT_NAME:-onprem-lakehouse}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "3"
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks: [lakehouse]
+  logging: *default-logging
+
+x-airflow-common: &airflow-common
+  <<: *service-defaults
+  image: ${AIRFLOW_IMAGE:-onprem-lakehouse/airflow:3.3.0}
+  build:
+    context: .
+    dockerfile: platform/images/airflow/Dockerfile
+  user: "${AIRFLOW_UID:-50000}:0"
+  env_file: [.env]
+  environment:
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api:8080/execution/
+    AIRFLOW__CORE__PARALLELISM: "2"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__FAB__AUTH_BACKENDS: airflow.providers.fab.auth_manager.api.auth.backend.basic_auth
+    AIRFLOW_CONN_RETAIL_SOURCE: postgresql://source_app:${SOURCE_DB_PASSWORD}@postgres:5432/retail
+    AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
+    AIRFLOW_VAR_LAKEHOUSE_BATCH_ROWS: "0"
+    LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+    LDAP_ANALYST_USERNAME: ${LDAP_ANALYST_USERNAME}
+    LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
+    LDAPTLS_CACERT: /opt/airflow/certs/ca.crt
+    POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
+    POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+    GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+    GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
+    AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+    AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+    SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
+    PYTHONPATH: /opt/airflow
+  volumes:
+    - ./orchestration/dags:/opt/airflow/dags:ro
+    - ./data-pipeline:/opt/airflow/pipeline:ro
+    - airflow_logs:/opt/airflow/logs
+    - ./platform/config/airflow/webserver_config.py:/opt/airflow/webserver_config.py:ro
+    - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    - ./platform/config/pki/ca.crt:/opt/airflow/certs/ca.crt:ro
+    - ./operations/scripts/bootstrap-platform.sh:/opt/airflow/bootstrap/bootstrap-platform.sh:ro
+    - ./platform/config/ranger/policies:/opt/airflow/bootstrap/policies:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    openldap:
+      condition: service_healthy
+
+services:
+  postgres:
+    container_name: lakehouse-postgres
+    <<: *service-defaults
+    image: ${POSTGRES_IMAGE:-postgres:17.10-bookworm}
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: platform_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: platform
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      RANGER_DB_PASSWORD: ${RANGER_DB_PASSWORD}
+      POLARIS_DB_PASSWORD: ${POLARIS_DB_PASSWORD}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./platform/config/postgres/init.sh:/docker-entrypoint-initdb.d/01-platform.sh:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform_admin -d platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  openldap:
+    container_name: lakehouse-openldap
+    <<: *service-defaults
+    image: ${OPENLDAP_IMAGE:-onprem-lakehouse/openldap:2.6.13}
+    build:
+      context: .
+      dockerfile: platform/images/openldap/Dockerfile
+    environment:
+      LDAP_DOMAIN: lakehouse.local
+      LDAP_BASE_DN: dc=lakehouse,dc=local
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+      LDAPTLS_CACERT: /run/certs/ca.crt
+      LDAP_CONFIG_PASSWORD: ${LDAP_CONFIG_PASSWORD}
+      LDAP_ANALYST_USERNAME: ${LDAP_ANALYST_USERNAME}
+      LDAP_ANALYST_PASSWORD: ${LDAP_ANALYST_PASSWORD}
+      LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
+      LDAP_ENGINEER_PASSWORD: ${LDAP_ENGINEER_PASSWORD}
+      CUBE_LDAP_PASSWORD: ${CUBE_LDAP_PASSWORD}
+    volumes:
+      - ldap_data:/var/lib/openldap
+      - ldap_config:/etc/openldap/slapd.d
+      - ./platform/config/pki/ldap.crt:/run/certs/ldap.crt:ro
+      - ./platform/config/pki/ldap.key:/run/certs/ldap.key:ro
+      - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+    ports:
+      - "127.0.0.1:636:636"
+    healthcheck:
+      test: ["CMD-SHELL", "ldapwhoami -x -H ldap://127.0.0.1:389 -D cn=admin,dc=lakehouse,dc=local -w \"$$LDAP_ADMIN_PASSWORD\" >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  ranger-admin:
+    container_name: lakehouse-ranger-admin
+    <<: *service-defaults
+    image: ${RANGER_ADMIN_IMAGE:-onprem-lakehouse/ranger-admin:2.8.0}
+    build:
+      context: .
+      dockerfile: platform/images/ranger/Dockerfile
+      target: ranger-admin
+    environment:
+      RANGER_DB_HOST: postgres
+      RANGER_DB_NAME: ranger
+      RANGER_DB_USER: ranger
+      RANGER_DB_PASSWORD: ${RANGER_DB_PASSWORD}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      RANGER_ADMIN_PASSWORD: ${RANGER_ADMIN_PASSWORD}
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+      LDAPTLS_CACERT: /run/certs/ca.crt
+    volumes:
+      - ranger_admin_data:/var/lib/ranger
+      - ranger_audit:/var/log/ranger
+      - ./platform/config/ranger/admin:/opt/ranger/config:ro
+      - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.ranger.rule: Host(`ranger.lakehouse.local`)
+      traefik.http.routers.ranger.entrypoints: websecure
+      traefik.http.routers.ranger.tls: "true"
+      traefik.http.services.ranger.loadbalancer.server.port: "6080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openldap:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:6080/service/public/v2/api/health || curl -fsS http://127.0.0.1:6080/login.jsp >/dev/null"]
+      interval: 20s
+      timeout: 10s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 1200m
+
+  ranger-usersync:
+    container_name: lakehouse-ranger-usersync
+    <<: *service-defaults
+    image: ${RANGER_USERSYNC_IMAGE:-onprem-lakehouse/ranger-usersync:2.8.0}
+    build:
+      context: .
+      dockerfile: platform/images/ranger/Dockerfile
+      target: ranger-usersync
+    environment:
+      RANGER_URL: http://ranger-admin:6080
+      RANGER_ADMIN_PASSWORD: ${RANGER_ADMIN_PASSWORD}
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+    volumes:
+      - ranger_usersync_data:/var/lib/ranger-usersync
+      - ./platform/images/ranger/usersync-entrypoint.sh:/usr/local/bin/ranger-entrypoint:ro
+      - ./platform/config/ranger/usersync:/opt/ranger/config:ro
+      - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+    depends_on:
+      ranger-admin:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  garage:
+    container_name: lakehouse-garage
+    <<: *service-defaults
+    image: ${GARAGE_IMAGE:-dxflrs/garage:v2.3.0}
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    environment:
+      GARAGE_CONFIG_FILE: /etc/garage.toml
+      GARAGE_DEFAULT_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${GARAGE_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: lakehouse
+    volumes:
+      - ./platform/config/garage/garage.generated.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  polaris:
+    container_name: lakehouse-polaris
+    <<: *service-defaults
+    image: onprem-lakehouse/polaris:1.6.0
+    build:
+      context: .
+      dockerfile: platform/images/polaris/Dockerfile
+    environment:
+      POLARIS_REALM_CONTEXT_REALMS: POLARIS
+      POLARIS_REALM: POLARIS
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
+      QUARKUS_DATASOURCE_USERNAME: polaris
+      QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
+      POLARIS_ROOT_PASSWORD: ${POLARIS_ROOT_PASSWORD}
+      POLARIS_AUTHENTICATION_TOKEN_BROKER_RSA_KEY_PAIR_PRIVATE_KEY_FILE: /run/certs/polaris-token.key
+      POLARIS_AUTHENTICATION_TOKEN_BROKER_RSA_KEY_PAIR_PUBLIC_KEY_FILE: /run/certs/polaris-token.pub
+      AWS_ACCESS_KEY_ID: ${GARAGE_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${GARAGE_SECRET_KEY}
+      AWS_REGION: garage
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+      JAVA_TOOL_OPTIONS: -Daws.requestChecksumCalculation=WHEN_REQUIRED -Daws.responseChecksumValidation=WHEN_REQUIRED
+    volumes:
+      - ./platform/config/pki/polaris-token.key:/run/certs/polaris-token.key:ro
+      - ./platform/config/pki/polaris-token.pub:/run/certs/polaris-token.pub:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8182/q/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 896m
+
+  spark-master:
+    container_name: lakehouse-spark-master
+    <<: *service-defaults
+    image: ${SPARK_IMAGE:-onprem-lakehouse/spark:3.5.8}
+    build:
+      context: .
+      dockerfile: platform/images/spark/Dockerfile
+    command: ["/opt/spark/sbin/start-master.sh"]
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: "7077"
+      SPARK_MASTER_WEBUI_PORT: "8080"
+      SPARK_MASTER_OPTS: -Dspark.ui.reverseProxy=true -Dspark.ui.reverseProxyUrl=http://127.0.0.1:8081
+      POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
+      POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
+    volumes:
+      - ./data-pipeline:/opt/lakehouse/pipeline:ro
+      - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./platform/config/pki/ca.crt:/opt/lakehouse/certs/ca.crt:ro
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      polaris:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080 >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+
+  spark-worker:
+    container_name: lakehouse-spark-worker
+    <<: *service-defaults
+    image: ${SPARK_IMAGE:-onprem-lakehouse/spark:3.5.8}
+    build:
+      context: .
+      dockerfile: platform/images/spark/Dockerfile
+    command: ["/opt/spark/sbin/start-worker.sh", "spark://spark-master:7077"]
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_WORKER_CORES: "2"
+      SPARK_WORKER_MEMORY: 1536m
+      SPARK_WORKER_WEBUI_PORT: "8081"
+      SPARK_WORKER_OPTS: -Dspark.ui.reverseProxy=true -Dspark.ui.reverseProxyUrl=http://127.0.0.1:8081
+      POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
+      POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
+    volumes:
+      - ./data-pipeline:/opt/lakehouse/pipeline:ro
+      - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./platform/config/pki/ca.crt:/opt/lakehouse/certs/ca.crt:ro
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1900m
+
+  airflow-api:
+    container_name: lakehouse-airflow-api
+    <<: *airflow-common
+    command: ["bash", "-c", "airflow db migrate && exec airflow api-server"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openldap:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "127.0.0.1:8080:8080"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.airflow.rule: Host(`airflow.lakehouse.local`)
+      traefik.http.routers.airflow.entrypoints: websecure
+      traefik.http.routers.airflow.tls: "true"
+      traefik.http.services.airflow.loadbalancer.server.port: "8080"
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  airflow-scheduler:
+    container_name: lakehouse-airflow-scheduler
+    <<: *airflow-common
+    command: ["scheduler"]
+    depends_on:
+      airflow-api:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --local"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  airflow-dag-processor:
+    container_name: lakehouse-airflow-dag-processor
+    <<: *airflow-common
+    command: ["dag-processor"]
+    depends_on:
+      airflow-api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  control-panel:
+    container_name: lakehouse-control-panel
+    <<: *service-defaults
+    image: ${CONTROL_PANEL_IMAGE:-onprem-lakehouse/control-panel:1.0.0}
+    build:
+      context: .
+      dockerfile: platform/images/control-panel/Dockerfile
+    environment:
+      AIRFLOW_API_URL: http://airflow-api:8080
+      AIRFLOW_DAG_ID: retail_lakehouse_pipeline
+      LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
+      LDAP_ENGINEER_PASSWORD: ${LDAP_ENGINEER_PASSWORD}
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      airflow-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  trino:
+    container_name: lakehouse-trino
+    hostname: trino
+    <<: *service-defaults
+    image: ${TRINO_IMAGE:-trinodb/trino:481}
+    environment:
+      CUBE_LDAP_PASSWORD: ${CUBE_LDAP_PASSWORD}
+      POLARIS_TRINO_CLIENT_ID: ${POLARIS_TRINO_CLIENT_ID}
+      POLARIS_TRINO_CLIENT_SECRET: ${POLARIS_TRINO_CLIENT_SECRET}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
+      TRINO_SHARED_SECRET: ${TRINO_SHARED_SECRET}
+    volumes:
+      - ./platform/config/trino:/etc/trino:ro
+      - ./platform/config/pki:/run/certs:ro
+    ports:
+      - "127.0.0.1:8443:8443"
+    depends_on:
+      ranger-admin:
+        condition: service_healthy
+      polaris:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fk https://127.0.0.1:8443/v1/info >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  cube:
+    container_name: lakehouse-cube
+    <<: *service-defaults
+    image: ${CUBE_IMAGE:-cubejs/cube:v1.7.11}
+    environment:
+      CUBEJS_DEV_MODE: "false"
+      CUBEJS_DB_TYPE: trino
+      CUBEJS_DB_HOST: trino
+      CUBEJS_DB_PORT: "8443"
+      CUBEJS_DB_SSL: "true"
+      CUBEJS_DB_USER: svc_cube
+      CUBEJS_DB_PASS: ${CUBE_LDAP_PASSWORD}
+      CUBEJS_DB_PRESTO_CATALOG: lakehouse
+      CUBEJS_DB_NAME: gold
+      CUBEJS_CACHE_AND_QUEUE_DRIVER: memory
+      NODE_EXTRA_CA_CERTS: /run/certs/ca.crt
+      CUBEJS_API_SECRET: ${CUBE_API_SECRET}
+      CUBEJS_PG_SQL_PORT: "15432"
+      CUBEJS_SQL_USER: superset
+      CUBEJS_SQL_PASSWORD: ${CUBE_SQL_PASSWORD}
+    volumes:
+      - ./analytics/cube:/cube/conf:ro
+      - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+    depends_on:
+      trino:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.cube.rule: Host(`cube.lakehouse.local`)
+      traefik.http.routers.cube.entrypoints: websecure
+      traefik.http.routers.cube.tls: "true"
+      traefik.http.services.cube.loadbalancer.server.port: "4000"
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  superset:
+    container_name: lakehouse-superset
+    <<: *service-defaults
+    image: ${SUPERSET_IMAGE:-onprem-lakehouse/superset:6.1.0}
+    build:
+      context: .
+      dockerfile: platform/images/superset/Dockerfile
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+      LDAPTLS_CACERT: /run/certs/ca.crt
+      CUBE_SQL_PASSWORD: ${CUBE_SQL_PASSWORD}
+    volumes:
+      - ./platform/config/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./analytics/superset:/app/bootstrap:ro
+      - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+    command: ["/bin/bash", "-c", "/app/bootstrap/init.sh && exec gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120 'superset.app:create_app()'"]
+    ports:
+      - "127.0.0.1:8088:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cube:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.superset.rule: Host(`superset.lakehouse.local`)
+      traefik.http.routers.superset.entrypoints: websecure
+      traefik.http.routers.superset.tls: "true"
+      traefik.http.services.superset.loadbalancer.server.port: "8088"
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  traefik:
+    container_name: lakehouse-traefik
+    <<: *service-defaults
+    image: ${TRAEFIK_IMAGE:-traefik:v3.7.1}
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./platform/config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./platform/config/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./platform/config/pki:/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      airflow-api:
+        condition: service_healthy
+      ranger-admin:
+        condition: service_healthy
+      superset:
+        condition: service_healthy
+      cube:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+networks:
+  lakehouse:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ldap_data:
+  ldap_config:
+  ranger_admin_data:
+  ranger_usersync_data:
+  ranger_audit:
+  garage_meta:
+  garage_data:
+  airflow_logs:

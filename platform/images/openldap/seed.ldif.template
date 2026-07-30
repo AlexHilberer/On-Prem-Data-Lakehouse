@@ -1,0 +1,57 @@
+dn: dc=lakehouse,dc=local
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: On-Prem Lakehouse
+dc: lakehouse
+
+dn: ou=people,dc=lakehouse,dc=local
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=lakehouse,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=__ANALYST_USERNAME__,ou=people,dc=lakehouse,dc=local
+objectClass: inetOrgPerson
+uid: __ANALYST_USERNAME__
+cn: Alice Analyst
+sn: Analyst
+givenName: Alice
+mail: alice.analyst@lakehouse.local
+employeeNumber: lakehouse-demo-analyst
+userPassword: __ANALYST_HASH__
+
+dn: uid=__ENGINEER_USERNAME__,ou=people,dc=lakehouse,dc=local
+objectClass: inetOrgPerson
+uid: __ENGINEER_USERNAME__
+cn: Bob Engineer
+sn: Engineer
+givenName: Bob
+mail: bob.engineer@lakehouse.local
+employeeNumber: lakehouse-demo-engineer
+userPassword: __ENGINEER_HASH__
+
+dn: uid=svc_cube,ou=people,dc=lakehouse,dc=local
+objectClass: inetOrgPerson
+uid: svc_cube
+cn: Cube Service
+sn: Service
+mail: svc_cube@lakehouse.local
+userPassword: __CUBE_HASH__
+
+dn: cn=lakehouse_analysts,ou=groups,dc=lakehouse,dc=local
+objectClass: groupOfNames
+cn: lakehouse_analysts
+member: uid=__ANALYST_USERNAME__,ou=people,dc=lakehouse,dc=local
+
+dn: cn=lakehouse_engineers,ou=groups,dc=lakehouse,dc=local
+objectClass: groupOfNames
+cn: lakehouse_engineers
+member: uid=__ENGINEER_USERNAME__,ou=people,dc=lakehouse,dc=local
+
+dn: cn=lakehouse_services,ou=groups,dc=lakehouse,dc=local
+objectClass: groupOfNames
+cn: lakehouse_services
+member: uid=svc_cube,ou=people,dc=lakehouse,dc=local

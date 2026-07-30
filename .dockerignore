@@ -1,0 +1,9 @@
+.env
+platform/config/pki
+platform/config/garage/garage.generated.toml
+platform/config/trino/dbeaver-trino-truststore.p12
+operations/backups
+.git
+__pycache__
+*.pyc
+logs

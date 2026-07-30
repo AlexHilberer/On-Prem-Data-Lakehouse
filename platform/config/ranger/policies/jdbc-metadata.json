@@ -1,0 +1,18 @@
+{
+  "name": "jdbc-client-metadata-read",
+  "service": "trino_lakehouse",
+  "policyType": 0,
+  "isEnabled": true,
+  "isAuditEnabled": true,
+  "resources": {
+    "catalog": {"values": ["system"], "isExcludes": false, "isRecursive": false},
+    "schema": {"values": ["jdbc"], "isExcludes": false, "isRecursive": false},
+    "table": {"values": ["*"], "isExcludes": false, "isRecursive": false},
+    "column": {"values": ["*"], "isExcludes": false, "isRecursive": false}
+  },
+  "policyItems": [{
+    "groups": ["lakehouse_analysts", "lakehouse_engineers"],
+    "accesses": [{"type": "select", "isAllowed": true}],
+    "delegateAdmin": false
+  }]
+}

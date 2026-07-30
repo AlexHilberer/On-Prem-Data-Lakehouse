@@ -1,0 +1,21 @@
+{
+  "name": "analyst-customer-email-mask",
+  "service": "trino_lakehouse",
+  "policyType": 1,
+  "isEnabled": true,
+  "isAuditEnabled": true,
+  "resources": {
+    "catalog": {"values": ["lakehouse"], "isExcludes": false, "isRecursive": false},
+    "schema": {"values": ["gold"], "isExcludes": false, "isRecursive": false},
+    "table": {"values": ["customer_360"], "isExcludes": false, "isRecursive": false},
+    "column": {"values": ["email"], "isExcludes": false, "isRecursive": false}
+  },
+  "dataMaskPolicyItems": [{
+    "groups": ["lakehouse_analysts"],
+    "accesses": [{"type": "select", "isAllowed": true}],
+    "dataMaskInfo": {
+      "dataMaskType": "CUSTOM",
+      "valueExpr": "concat(substr({col}, 1, 2), '***@***')"
+    }
+  }]
+}
