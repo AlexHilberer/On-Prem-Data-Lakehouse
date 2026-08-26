@@ -27,6 +27,8 @@ flowchart LR
 
   subgraph Orchestration["Orchestration & Processing"]
     Airflow["Airflow 3<br/>API · Scheduler · DAG Processor"]
+    Queue["Redis<br/>Task Queue"]
+    Worker["Airflow<br/>Celery Worker"]
     Control["Streamlit<br/>Control Panel"]
     Generator["Python Data Generator"]
     Spark["Spark<br/>Master + Worker"]
@@ -55,8 +57,9 @@ flowchart LR
   DBeaver -->|Native TLS :8443| Trino
   Control --> Airflow
   LDAP --> UserSync --> Ranger
-  Airflow --> Generator --> Source
-  Airflow --> Spark
+  Airflow --> Queue --> Worker
+  Worker --> Generator --> Source
+  Worker --> Spark
   Spark --> Source
   Spark --> Polaris
   Spark --> Garage
@@ -70,6 +73,50 @@ flowchart LR
 All data transformations run in Spark. Trino remains query-only, Polaris owns
 Iceberg catalog metadata, Garage stores table objects, and Ranger governs the
 supported human query path.
+
+## Container Responsibilities
+
+Airflow task execution is separated from scheduling:
+
+```text
+Airflow Scheduler -> Redis queue -> Airflow Worker -> Spark Master -> Spark Worker
+```
+
+Redis is an internal-only, transient Celery broker. It has no host port or web
+interface; PostgreSQL remains authoritative for Airflow metadata and completed
+task results.
+
+| Container | Responsibility |
+| --- | --- |
+| `lakehouse-postgres` | Hosts retail source data and the Airflow, Ranger, Polaris, and Superset metadata databases. |
+| `lakehouse-redis` | Holds queued Airflow tasks until the Celery worker accepts them. |
+| `lakehouse-openldap` | Provides identities for analysts, engineers, and service accounts. |
+| `lakehouse-ranger-admin` | Manages Trino authorization and column-masking policies. |
+| `lakehouse-ranger-usersync` | Synchronizes LDAP users and groups into Ranger. |
+| `lakehouse-garage` | Stores Iceberg table objects through an S3-compatible API. |
+| `lakehouse-polaris` | Tracks Iceberg catalogs, schemas, tables, and snapshots. |
+| `lakehouse-spark-master` | Coordinates Spark applications and provides the Spark UI. |
+| `lakehouse-spark-worker` | Executes bronze, silver, gold, and quality-check transformations. |
+| `lakehouse-airflow-api` | Provides the Airflow UI, REST API, authentication, and task execution API. |
+| `lakehouse-airflow-scheduler` | Determines which tasks are ready and queues them through Redis. |
+| `lakehouse-airflow-dag-processor` | Parses and serializes Airflow DAG definitions. |
+| `lakehouse-airflow-worker` | Runs Python tasks and hosts the client-mode driver for submitted Spark applications. |
+| `lakehouse-control-panel` | Provides the local Streamlit interface for triggering and monitoring pipelines. |
+| `lakehouse-trino` | Executes governed interactive SQL over Iceberg tables. |
+| `lakehouse-cube` | Defines semantic measures and dimensions over curated gold data. |
+| `lakehouse-superset` | Provides dashboards and queries the lakehouse through Cube. |
+| `lakehouse-traefik` | Terminates HTTPS and routes named browser endpoints. |
+
+## Tracked Configuration
+
+The stack does not rely on mutable configuration hidden inside containers.
+Airflow, Spark, Redis, PostgreSQL, Polaris, Streamlit, Trino, Traefik, and
+Superset consume read-only files from `platform/config`; Cube consumes its
+tracked configuration from `analytics/cube`. Secrets and container-specific
+connection values remain in the ignored `.env` file.
+
+The [configuration inventory](platform/config/README.md) lists every mounted
+file, its container path, and how to update vendor-default snapshots safely.
 
 ## Data Journey
 

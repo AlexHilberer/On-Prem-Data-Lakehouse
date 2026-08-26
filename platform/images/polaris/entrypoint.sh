@@ -12,6 +12,7 @@ output="$(
 status="${status:-0}"
 printf '%s\n' "${output}"
 
+# Reusing an initialized relational realm is the normal restart path.
 if (( status != 0 )) && [[ "${output}" != *"already been bootstrapped"* ]]; then
   exit "${status}"
 fi

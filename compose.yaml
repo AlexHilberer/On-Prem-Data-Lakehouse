@@ -20,16 +20,12 @@ x-airflow-common: &airflow-common
   user: "${AIRFLOW_UID:-50000}:0"
   env_file: [.env]
   environment:
-    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api:8080/execution/
-    AIRFLOW__CORE__PARALLELISM: "2"
-    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW_CONFIG: /opt/airflow/config/airflow.cfg
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
+    # PostgreSQL retains completed task results while Redis only queues work.
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
     AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY}
-    AIRFLOW__FAB__AUTH_BACKENDS: airflow.providers.fab.auth_manager.api.auth.backend.basic_auth
     AIRFLOW_CONN_RETAIL_SOURCE: postgresql://source_app:${SOURCE_DB_PASSWORD}@postgres:5432/retail
     AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
     AIRFLOW_VAR_LAKEHOUSE_BATCH_ROWS: "0"
@@ -46,11 +42,13 @@ x-airflow-common: &airflow-common
     SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
     PYTHONPATH: /opt/airflow
   volumes:
+    - ./platform/config/airflow/airflow.cfg:/opt/airflow/config/airflow.cfg:ro
     - ./orchestration/dags:/opt/airflow/dags:ro
     - ./data-pipeline:/opt/airflow/pipeline:ro
     - airflow_logs:/opt/airflow/logs
     - ./platform/config/airflow/webserver_config.py:/opt/airflow/webserver_config.py:ro
     - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    - ./platform/config/spark/spark-env.sh:/opt/spark/conf/spark-env.sh:ro
     - ./platform/config/pki/ca.crt:/opt/airflow/certs/ca.crt:ro
     - ./operations/scripts/bootstrap-platform.sh:/opt/airflow/bootstrap/bootstrap-platform.sh:ro
     - ./platform/config/ranger/policies:/opt/airflow/bootstrap/policies:ro
@@ -65,6 +63,7 @@ services:
     container_name: lakehouse-postgres
     <<: *service-defaults
     image: ${POSTGRES_IMAGE:-postgres:17.10-bookworm}
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     shm_size: 256mb
     environment:
       POSTGRES_USER: platform_admin
@@ -78,6 +77,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./platform/config/postgres/init.sh:/docker-entrypoint-initdb.d/01-platform.sh:ro
+      - ./platform/config/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./platform/config/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./platform/config/postgres/pg_ident.conf:/etc/postgresql/pg_ident.conf:ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -89,6 +91,23 @@ services:
       resources:
         limits:
           memory: 768m
+
+  redis:
+    container_name: lakehouse-redis
+    <<: *service-defaults
+    image: ${REDIS_IMAGE:-redis:7.2.15-bookworm}
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./platform/config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   openldap:
     container_name: lakehouse-openldap
@@ -226,9 +245,7 @@ services:
       context: .
       dockerfile: platform/images/polaris/Dockerfile
     environment:
-      POLARIS_REALM_CONTEXT_REALMS: POLARIS
-      POLARIS_REALM: POLARIS
-      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      QUARKUS_CONFIG_LOCATIONS: /deployments/config/application.properties
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
       QUARKUS_DATASOURCE_USERNAME: polaris
       QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
@@ -242,6 +259,7 @@ services:
       AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
       JAVA_TOOL_OPTIONS: -Daws.requestChecksumCalculation=WHEN_REQUIRED -Daws.responseChecksumValidation=WHEN_REQUIRED
     volumes:
+      - ./platform/config/polaris/application.properties:/deployments/config/application.properties:ro
       - ./platform/config/pki/polaris-token.key:/run/certs/polaris-token.key:ro
       - ./platform/config/pki/polaris-token.pub:/run/certs/polaris-token.pub:ro
     depends_on:
@@ -280,6 +298,7 @@ services:
     volumes:
       - ./data-pipeline:/opt/lakehouse/pipeline:ro
       - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./platform/config/spark/spark-env.sh:/opt/spark/conf/spark-env.sh:ro
       - ./platform/config/pki/ca.crt:/opt/lakehouse/certs/ca.crt:ro
     ports:
       - "127.0.0.1:8081:8080"
@@ -317,6 +336,7 @@ services:
     volumes:
       - ./data-pipeline:/opt/lakehouse/pipeline:ro
       - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./platform/config/spark/spark-env.sh:/opt/spark/conf/spark-env.sh:ro
       - ./platform/config/pki/ca.crt:/opt/lakehouse/certs/ca.crt:ro
     depends_on:
       spark-master:
@@ -360,7 +380,7 @@ services:
     depends_on:
       airflow-api:
         condition: service_healthy
-      spark-master:
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --local"]
@@ -371,6 +391,27 @@ services:
       resources:
         limits:
           memory: 768m
+
+  airflow-worker:
+    container_name: lakehouse-airflow-worker
+    <<: *airflow-common
+    command: ["celery", "worker"]
+    depends_on:
+      airflow-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
 
   airflow-dag-processor:
     container_name: lakehouse-airflow-dag-processor
@@ -396,6 +437,9 @@ services:
       AIRFLOW_DAG_ID: retail_lakehouse_pipeline
       LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
       LDAP_ENGINEER_PASSWORD: ${LDAP_ENGINEER_PASSWORD}
+    command: ["streamlit", "run", "app.py"]
+    volumes:
+      - ./platform/config/control-panel/config.toml:/tmp/.streamlit/config.toml:ro
     ports:
       - "127.0.0.1:8501:8501"
     depends_on:

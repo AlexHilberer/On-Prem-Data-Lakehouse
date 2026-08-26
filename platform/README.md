@@ -6,7 +6,7 @@ for the lakehouse services.
 ## Responsibilities
 
 - Build the extended Airflow, OpenLDAP, Polaris, Ranger, Spark, Superset, and control-panel images.
-- Configure PostgreSQL, Garage, Trino, Traefik, Ranger, and application authentication.
+- Configure PostgreSQL, Redis, Garage, Trino, Traefik, Ranger, and application authentication.
 - Hold generated local PKI beneath `config/pki`; private material is ignored.
 - Keep every runtime version pinned and every service health-checkable.
 
@@ -16,6 +16,11 @@ for the lakehouse services.
 images/   Multi-stage Dockerfiles and service entrypoints
 config/   Mounted application configuration and Ranger policies
 ```
+
+Runtime configuration for Airflow, Spark, Redis, PostgreSQL, Polaris,
+Streamlit, Trino, Traefik, and Superset is tracked and mounted read-only. See
+the [configuration inventory](config/README.md) for paths and the boundary
+between files, environment wiring, and secrets.
 
 ## Exposure Policy
 
@@ -29,6 +34,7 @@ config/   Mounted application configuration and Ranger policies
 | Spark master UI | Direct `127.0.0.1:8081` only |
 | Trino | Native TLS on `127.0.0.1:8443` |
 | PostgreSQL and OpenLDAP | Direct loopback administrative ports |
+| Redis | Internal Docker network only |
 
 Traefik uses the Docker provider with `exposedByDefault: false`. Participating
 services define `traefik.enable`, router rule, `websecure` entrypoint, TLS, and
@@ -46,20 +52,23 @@ primary service rather than a one-shot container.
 flowchart TD
   PostgreSQL --> Ranger
   PostgreSQL --> Polaris
-  PostgreSQL --> Airflow
+  PostgreSQL --> AirflowAPI["Airflow API"]
   PostgreSQL --> Superset
   OpenLDAP --> Ranger
-  OpenLDAP --> Airflow
+  OpenLDAP --> AirflowAPI
   OpenLDAP --> Superset
   Garage --> Polaris
   Polaris --> Spark
   Polaris --> Trino
   Ranger --> Trino
-  Traefik --> Airflow
+  Traefik --> AirflowAPI
   Traefik --> Ranger
   Traefik --> Superset
   Traefik --> Cube
-  ControlPanel["Control Panel"] --> Airflow
+  ControlPanel["Control Panel"] --> AirflowAPI
+  Scheduler["Airflow Scheduler"] --> Redis --> AirflowWorker["Airflow Worker"]
+  PostgreSQL --> Scheduler & AirflowWorker
+  AirflowWorker --> Spark
   LocalOperator["Local Operator"] --> ControlPanel
   LocalOperator --> Spark
   DBeaver --> Trino

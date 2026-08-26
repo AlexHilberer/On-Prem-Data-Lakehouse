@@ -234,6 +234,7 @@ with app.app_context():
     from superset.models.dashboard import Dashboard
     from superset.models.slice import Slice
 
+    # Stable names let every container restart reconcile objects without duplicates.
     database = db.session.query(Database).filter_by(database_name="Cube").one_or_none()
     if database is None:
         database = Database(

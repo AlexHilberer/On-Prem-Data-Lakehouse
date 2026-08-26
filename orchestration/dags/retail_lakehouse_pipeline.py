@@ -37,7 +37,8 @@ def retail_lakehouse_pipeline():
             "{{ ti.xcom_pull(task_ids='generate')['batch_id'] }}",
         ],
         conf={
-            "spark.driver.host": "airflow-scheduler",
+            # Spark executors connect back to the client-mode driver in this worker.
+            "spark.driver.host": "airflow-worker",
             "spark.driver.bindAddress": "0.0.0.0",
         },
         verbose=True,

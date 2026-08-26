@@ -60,9 +60,9 @@ start_platform() {
 
   printf 'Starting core platform services...\n'
   docker compose up -d --remove-orphans \
-    postgres openldap garage ranger-admin ranger-usersync polaris airflow-api
+    postgres redis openldap garage ranger-admin ranger-usersync polaris airflow-api
   ./operations/scripts/wait-for-platform.sh \
-    postgres openldap garage ranger-admin ranger-usersync polaris airflow-api
+    postgres redis openldap garage ranger-admin ranger-usersync polaris airflow-api
 
   printf 'Applying platform configuration...\n'
   bootstrap

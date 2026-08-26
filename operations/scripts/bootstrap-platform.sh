@@ -31,6 +31,7 @@ service_payload='{
   }
 }'
 
+# Ranger exposes no declarative startup path, so its service and policies are upserted.
 ensure_ranger_service() {
   existing_service="$(curl -fsS -u "admin:${RANGER_ADMIN_PASSWORD}" \
     http://ranger-admin:6080/service/public/v2/api/service/name/trino_lakehouse \
@@ -75,6 +76,7 @@ for policy_template in "${script_dir}"/policies/*.json; do
   rm -f "${policy}"
 done
 
+# Polaris treats an existing catalog as a successful bootstrap outcome.
 token="$(curl -fsS -X POST http://polaris:8181/api/catalog/v1/oauth/tokens \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode grant_type=client_credentials \

@@ -7,7 +7,8 @@
 | LDAP as human identity source | Demonstrates centralized on-premises identity | Application metadata still caches user records |
 | Ranger enforcement through Trino | Uses a supported policy plugin and one governed query path | Polaris and Garage are protected by network and service credentials instead |
 | No impersonation | Avoids cross-user delegation complexity | Cube queries appear downstream as `svc_cube` |
-| Three Airflow processes | Airflow 3 requires API, scheduler, and standalone DAG processing | More containers than development `standalone` mode |
+| Celery Airflow worker | Keeps task execution out of the scheduler and makes the execution boundary visible | Requires a Redis broker and another container |
+| Four Airflow processes | Airflow 3 uses separate API, scheduler, DAG processor, and task worker responsibilities | More containers than development `standalone` mode |
 | Ranger source build | No suitable official runtime image is available | First build is slow and resource intensive |
 | Polaris wrapper image | Relational persistence requires the official admin tool bootstrap | Local image combines two official artifacts |
 | Selective Traefik ingress | Centralizes TLS for named browser apps while labels make participation explicit | Operational tools use separate loopback ports |

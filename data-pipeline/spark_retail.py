@@ -75,6 +75,7 @@ def process(batch_id: str, database_url: str) -> None:
     spark = configure_session()
     for namespace in ("bronze", "silver", "gold"):
         spark.sql(f"CREATE NAMESPACE IF NOT EXISTS lakehouse.{namespace}")
+    # Recreate only tables left behind by an older incompatible demo schema.
     for table_name, required_columns in (
         ("lakehouse.bronze.customers", {"city", "region", "acquisition_channel"}),
         ("lakehouse.bronze.orders", {"sales_channel", "campaign_id", "delivered_at"}),
@@ -114,6 +115,7 @@ def process(batch_id: str, database_url: str) -> None:
     if orders.rdd.isEmpty():
         raise RuntimeError(f"No source orders found for batch {batch_id}")
 
+    # Reference snapshots inherit the order batch so retries can replace them safely.
     customer_snapshot = customers.drop("batch_id").withColumn(
         "batch_id", functions.lit(batch_id)
     )
@@ -230,6 +232,7 @@ def process(batch_id: str, database_url: str) -> None:
         functions.sum("quantity").alias("units_sold"),
         functions.countDistinct("order_id").alias("order_count"),
     )
+    # Lifetime metrics span every batch, so customer_360 is rebuilt in full.
     all_order_lines = spark.table("lakehouse.silver.order_lines")
     customer_360 = all_order_lines.groupBy(
         "customer_id", "full_name", "email", "country", "city",
@@ -250,6 +253,7 @@ def process(batch_id: str, database_url: str) -> None:
     overwrite_batch(product_performance, "lakehouse.gold.product_performance", batch_id)
     replace_table(customer_360, "lakehouse.gold.customer_360")
 
+    # Reject invalid gold output before the semantic layer can expose it.
     if sales_performance.filter(functions.col("gross_profit") > functions.col("revenue")).count():
         raise RuntimeError("Quality check failed: gross profit exceeds revenue")
     if sales_performance.filter(

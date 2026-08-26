@@ -57,6 +57,7 @@ ensure_env_value() {
 
 ensure_env_value LDAP_ANALYST_USERNAME alice.analyst
 ensure_env_value LDAP_ENGINEER_USERNAME bob.engineer
+# Preserve passwords created by the earlier persona-specific variable names.
 ensure_env_value LDAP_ANALYST_PASSWORD "$(env_value ALICE_PASSWORD || true)"
 ensure_env_value LDAP_ENGINEER_PASSWORD "$(env_value BOB_PASSWORD || true)"
 
@@ -109,6 +110,7 @@ set -a
 source .env
 set +a
 
+# Existing keys are retained so previously trusted certificates remain valid.
 if [[ ! -f platform/config/pki/ca.key ]]; then
   openssl req -x509 -newkey rsa:4096 -nodes -days 1825 \
     -keyout platform/config/pki/ca.key -out platform/config/pki/ca.crt \

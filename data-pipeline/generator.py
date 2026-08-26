@@ -137,6 +137,7 @@ def generate_batch(
     with psycopg2.connect(database_url) as connection:
         with connection.cursor() as cursor:
             ensure_schema(cursor)
+            # Returning the recorded batch makes an Airflow retry idempotent.
             cursor.execute(
                 "SELECT period_start, period_end, actual_rows FROM source.ingestion_batches WHERE batch_id = %s",
                 (resolved_batch_id,),
@@ -150,6 +151,7 @@ def generate_batch(
                     "rows": existing_batch[2],
                 }
 
+            # Automatic runs bootstrap two years, then advance in monthly windows.
             period_start, period_end, is_bootstrap = resolve_period(cursor)
             resolved_rows = rows if rows and rows > 0 else (25_000 if is_bootstrap else 3_000)
             execute_values(
@@ -193,6 +195,7 @@ def generate_batch(
             existing_customers = cursor.fetchall()
             existing_customer_ids = [row[0] for row in existing_customers]
             new_customer_count = max(50, resolved_rows // (6 if is_bootstrap else 12))
+            # Batch-derived IDs stay stable when the same batch is retried.
             id_base = uuid.UUID(resolved_batch_id).int % 1_000_000_000
             cursor.execute(
                 """

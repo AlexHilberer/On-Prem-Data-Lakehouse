@@ -5,21 +5,31 @@ The DAG never performs analytical transformations inside Airflow tasks.
 
 ## Airflow Processes
 
-Airflow 3 runs its minimum supported process set:
+Airflow 3 separates control-plane processes from task execution:
 
 | Process | Responsibility | Public |
 | --- | --- | --- |
 | API server | UI, REST API, task execution API | Traefik HTTPS and localhost `8080` |
-| Scheduler | Creates task instances and runs LocalExecutor | No |
+| Scheduler | Creates task instances and queues them through Celery | No |
+| Celery worker | Runs Python tasks and submits Spark applications | No |
 | DAG processor | Parses and serializes DAG code | No |
 
-These are separate responsibilities, not redundant replicas.
+Redis carries queued work, while PostgreSQL stores Airflow metadata and Celery
+task results. These processes are separate responsibilities, not redundant
+replicas.
+
+Shared non-secret settings are persisted in
+`../platform/config/airflow/airflow.cfg` and mounted into every Airflow
+container. Secret keys and password-bearing database URLs remain environment
+variables sourced from `.env`.
 
 ## Retail DAG
 
 ```mermaid
 flowchart LR
-  Trigger["Manual trigger<br/>automatic volume or rows + seed"] --> Generate["generate<br/>Python task"]
+  Trigger["Manual trigger<br/>automatic volume or rows + seed"] --> Scheduler
+  Scheduler --> Redis["Redis task queue"] --> Worker["Airflow Celery worker"]
+  Worker --> Generate["generate<br/>Python task"]
   Generate --> Batch["Batch ID in XCom"]
   Batch --> SparkSubmit["spark_transform<br/>SparkSubmitOperator"]
   SparkSubmit --> Spark["Spark master + worker"]

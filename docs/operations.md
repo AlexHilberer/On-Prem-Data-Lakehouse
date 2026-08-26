@@ -26,10 +26,10 @@ sequenceDiagram
 
   Operator->>CLI: ./lakehouse.sh up
   CLI->>CLI: Generate .env secrets, service config, truststore, and PKI
-  CLI->>Core: Start PostgreSQL, LDAP, Garage, Ranger, Polaris, Airflow API
+  CLI->>Core: Start PostgreSQL, Redis, LDAP, Garage, Ranger, Polaris, Airflow API
   CLI->>Core: Wait for health
   CLI->>Bootstrap: Apply Ranger policies and Polaris catalog
-  CLI->>Apps: Start Spark, Airflow workers, control panel, Trino, Cube, Superset
+  CLI->>Apps: Start Spark, Airflow worker, control panel, Trino, Cube, Superset
   CLI->>Edge: Start HTTPS routing
   CLI-->>Operator: Platform ready
 ```

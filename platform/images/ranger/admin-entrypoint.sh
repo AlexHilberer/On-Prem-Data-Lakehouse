@@ -7,6 +7,7 @@ if [[ -f /run/certs/ca.crt ]]; then
     -file /run/certs/ca.crt -keystore "${JAVA_HOME}/lib/security/cacerts" \
     -storepass changeit 2>/dev/null || true
 fi
+# The data volume keeps the expensive Ranger setup across container restarts.
 if [[ ! -f .container-installed ]]; then
   render-ranger-config /opt/ranger/config/install.properties.template install.properties
   ./setup.sh

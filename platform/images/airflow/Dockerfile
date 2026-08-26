@@ -28,6 +28,7 @@ USER airflow
 RUN pip install --no-cache-dir \
       "apache-airflow==3.3.0" \
       "apache-airflow-providers-fab==3.7.2" \
+      "apache-airflow-providers-celery==3.23.1" \
       "psycopg2-binary==2.9.10" \
       "faker==37.5.3" \
     && pip install --no-cache-dir --no-deps \

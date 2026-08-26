@@ -17,7 +17,11 @@ if ! docker info >/dev/null 2>&1; then
   exit 0
 fi
 
-required=(postgres openldap ranger-admin garage polaris spark-master spark-worker airflow-api control-panel trino cube superset traefik)
+required=(
+  postgres redis openldap ranger-admin garage polaris spark-master spark-worker
+  airflow-api airflow-scheduler airflow-worker airflow-dag-processor
+  control-panel trino cube superset traefik
+)
 for service in "${required[@]}"; do
   test -n "$(docker compose ps -q "${service}")" || {
     printf 'Service %s is not running. Run ./lakehouse.sh up first.\n' "${service}" >&2

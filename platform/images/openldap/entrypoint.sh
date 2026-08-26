@@ -55,6 +55,7 @@ ldap_args=(
   -w "${LDAP_ADMIN_PASSWORD}"
 )
 
+# Stable employee markers allow configured usernames to change without duplicates.
 find_managed_dn() {
   local marker="$1"
   local legacy_uid="$2"

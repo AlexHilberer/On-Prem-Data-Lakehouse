@@ -35,12 +35,14 @@ flowchart TB
       AirflowAPI["Airflow API"]
       Scheduler["Airflow Scheduler"]
       DagProcessor["Airflow DAG Processor"]
+      Redis["Redis Task Broker"]
       ControlPanel["Streamlit Control Panel"]
     end
 
     subgraph Compute["Compute & Query"]
       SparkMaster["Spark Master"]
       SparkWorker["Spark Worker"]
+      AirflowWorker["Airflow Celery Worker"]
       Trino["Trino"]
       Cube["Cube Core"]
       Superset["Superset"]
@@ -64,7 +66,9 @@ flowchart TB
   LDAP --> AirflowAPI & Ranger & Superset & Trino
   UserSync --> Ranger
   DagProcessor --> PostgreSQL
-  Scheduler --> SparkMaster
+  Scheduler --> Redis --> AirflowWorker
+  Scheduler --> PostgreSQL
+  AirflowWorker --> PostgreSQL & SparkMaster
   SparkMaster --> SparkWorker
   SparkWorker --> PostgreSQL & Polaris & Garage
   Cube --> Trino
@@ -75,8 +79,8 @@ flowchart TB
   Superset --> PostgreSQL
 ```
 
-Every service has one replica by design. Spark is the only component with a
-master/worker split.
+Every service has one replica by design. Spark separates cluster coordination
+from execution, while Airflow separates orchestration from queued task work.
 
 The Airflow API and Spark master UI are additionally published on localhost.
 Spark master reverse-proxies worker and live application pages so operators use
@@ -95,9 +99,9 @@ are available through both direct loopback ports and named HTTPS routes.
 
 ## Startup Flow
 
-The root CLI starts dependency services first, waits for health, applies Ranger
-and Polaris configuration from the running Airflow API container, and then
-starts processing and presentation services.
+The root CLI starts dependency services, including the Redis task broker, waits
+for health, applies Ranger and Polaris configuration from the running Airflow
+API container, and then starts workers and presentation services.
 
 No Makefile, one-shot Compose service, or temporary bootstrap container is
 required.
@@ -105,12 +109,16 @@ required.
 ## Persistence
 
 Docker volumes retain PostgreSQL, LDAP, Ranger, Garage, Airflow logs, and
-Traefik-independent application state. Configuration is bind-mounted from the
-repository. Generated secrets and certificates are ignored by version control.
+Traefik-independent application state. Redis is a transient broker; PostgreSQL
+remains authoritative for Airflow and Celery results. Configuration is
+bind-mounted read-only from the repository, including the effective Airflow,
+Spark, Redis, PostgreSQL, Polaris, and Streamlit settings. Generated secrets,
+certificates, and deployment connection values remain outside those tracked
+files and are ignored by version control.
 
 ## Scaling Path
 
 A production evolution would separate stateful services onto dedicated hosts,
-use PostgreSQL and object-storage replication, replace LocalExecutor, introduce
-remote task logs, scale Trino workers, externalize secrets, and deploy multiple
-ingress instances behind a load balancer.
+use PostgreSQL and object-storage replication, scale Celery and Trino workers,
+introduce remote task logs and a durable broker, externalize secrets, and
+deploy multiple ingress instances behind a load balancer.

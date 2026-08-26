@@ -45,6 +45,7 @@ client = AirflowClient(AIRFLOW_URL, DAG_ID)
 st.title("Lakehouse Control Panel")
 st.caption("Trigger and monitor the governed retail lakehouse pipeline.")
 
+# Keep only the short-lived Airflow token in the browser session.
 if "access_token" not in st.session_state:
     try:
         st.session_state["access_token"] = client.authenticate(
