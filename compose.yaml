@@ -13,7 +13,7 @@ x-service-defaults: &service-defaults
 
 x-airflow-common: &airflow-common
   <<: *service-defaults
-  image: ${AIRFLOW_IMAGE:-onprem-lakehouse/airflow:3.3.0}
+  image: onprem-lakehouse/airflow:3.3.0
   build:
     context: .
     dockerfile: platform/images/airflow/Dockerfile
@@ -62,7 +62,7 @@ services:
   postgres:
     container_name: lakehouse-postgres
     <<: *service-defaults
-    image: ${POSTGRES_IMAGE:-postgres:17.10-bookworm}
+    image: postgres:17.10-bookworm
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     shm_size: 256mb
     environment:
@@ -95,7 +95,7 @@ services:
   redis:
     container_name: lakehouse-redis
     <<: *service-defaults
-    image: ${REDIS_IMAGE:-redis:7.2.15-bookworm}
+    image: redis:7.2.15-bookworm
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     volumes:
       - ./platform/config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -112,7 +112,7 @@ services:
   openldap:
     container_name: lakehouse-openldap
     <<: *service-defaults
-    image: ${OPENLDAP_IMAGE:-onprem-lakehouse/openldap:2.6.13}
+    image: onprem-lakehouse/openldap:2.6.13
     build:
       context: .
       dockerfile: platform/images/openldap/Dockerfile
@@ -148,7 +148,7 @@ services:
   ranger-admin:
     container_name: lakehouse-ranger-admin
     <<: *service-defaults
-    image: ${RANGER_ADMIN_IMAGE:-onprem-lakehouse/ranger-admin:2.8.0}
+    image: onprem-lakehouse/ranger-admin:2.8.0
     build:
       context: .
       dockerfile: platform/images/ranger/Dockerfile
@@ -167,6 +167,8 @@ services:
       - ranger_audit:/var/log/ranger
       - ./platform/config/ranger/admin:/opt/ranger/config:ro
       - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+    ports:
+      - "127.0.0.1:6080:6080"
     labels:
       traefik.enable: "true"
       traefik.http.routers.ranger.rule: Host(`ranger.lakehouse.local`)
@@ -191,7 +193,7 @@ services:
   ranger-usersync:
     container_name: lakehouse-ranger-usersync
     <<: *service-defaults
-    image: ${RANGER_USERSYNC_IMAGE:-onprem-lakehouse/ranger-usersync:2.8.0}
+    image: onprem-lakehouse/ranger-usersync:2.8.0
     build:
       context: .
       dockerfile: platform/images/ranger/Dockerfile
@@ -216,7 +218,7 @@ services:
   garage:
     container_name: lakehouse-garage
     <<: *service-defaults
-    image: ${GARAGE_IMAGE:-dxflrs/garage:v2.3.0}
+    image: dxflrs/garage:v2.3.0
     command: ["/garage", "server", "--single-node", "--default-bucket"]
     environment:
       GARAGE_CONFIG_FILE: /etc/garage.toml
@@ -280,7 +282,7 @@ services:
   spark-master:
     container_name: lakehouse-spark-master
     <<: *service-defaults
-    image: ${SPARK_IMAGE:-onprem-lakehouse/spark:3.5.8}
+    image: onprem-lakehouse/spark:3.5.8
     build:
       context: .
       dockerfile: platform/images/spark/Dockerfile
@@ -318,7 +320,7 @@ services:
   spark-worker:
     container_name: lakehouse-spark-worker
     <<: *service-defaults
-    image: ${SPARK_IMAGE:-onprem-lakehouse/spark:3.5.8}
+    image: onprem-lakehouse/spark:3.5.8
     build:
       context: .
       dockerfile: platform/images/spark/Dockerfile
@@ -428,7 +430,7 @@ services:
   control-panel:
     container_name: lakehouse-control-panel
     <<: *service-defaults
-    image: ${CONTROL_PANEL_IMAGE:-onprem-lakehouse/control-panel:1.0.0}
+    image: onprem-lakehouse/control-panel:1.0.0
     build:
       context: .
       dockerfile: platform/images/control-panel/Dockerfile
@@ -459,7 +461,7 @@ services:
     container_name: lakehouse-trino
     hostname: trino
     <<: *service-defaults
-    image: ${TRINO_IMAGE:-trinodb/trino:481}
+    image: trinodb/trino:481
     environment:
       CUBE_LDAP_PASSWORD: ${CUBE_LDAP_PASSWORD}
       POLARIS_TRINO_CLIENT_ID: ${POLARIS_TRINO_CLIENT_ID}
@@ -490,7 +492,7 @@ services:
   cube:
     container_name: lakehouse-cube
     <<: *service-defaults
-    image: ${CUBE_IMAGE:-cubejs/cube:v1.7.11}
+    image: cubejs/cube:v1.7.11
     environment:
       CUBEJS_DEV_MODE: "false"
       CUBEJS_DB_TYPE: trino
@@ -532,7 +534,7 @@ services:
   superset:
     container_name: lakehouse-superset
     <<: *service-defaults
-    image: ${SUPERSET_IMAGE:-onprem-lakehouse/superset:6.1.0}
+    image: onprem-lakehouse/superset:6.1.0
     build:
       context: .
       dockerfile: platform/images/superset/Dockerfile
@@ -574,7 +576,7 @@ services:
   traefik:
     container_name: lakehouse-traefik
     <<: *service-defaults
-    image: ${TRAEFIK_IMAGE:-traefik:v3.7.1}
+    image: traefik:v3.7.1
     security_opt:
       - no-new-privileges:true
     volumes:

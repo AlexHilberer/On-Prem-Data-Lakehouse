@@ -53,6 +53,7 @@ curl --fail --silent --show-error --cacert platform/config/pki/ca.crt \
 curl --fail --silent --show-error --cacert platform/config/pki/ca.crt \
   --resolve ranger.lakehouse.local:443:127.0.0.1 \
   https://ranger.lakehouse.local/login.jsp >/dev/null
+curl --fail --silent --show-error http://127.0.0.1:6080/login.jsp >/dev/null
 curl --fail --silent --show-error --cacert platform/config/pki/ca.crt \
   --resolve cube.lakehouse.local:443:127.0.0.1 \
   https://cube.lakehouse.local/readyz >/dev/null

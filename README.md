@@ -1,12 +1,7 @@
 # On-Premises Data Lakehouse
 
-An enterprise-shaped, single-host lakehouse that demonstrates how identity,
-authorization, orchestration, open table formats, semantic modeling, and
-business intelligence fit together without a public-cloud dependency.
-
-The platform starts with one command, generates its own demo data, processes
-every transformation in Spark, stores Iceberg tables in Garage, and exposes
-governed analytics through Trino, Cube, and Superset.
+Single-host Docker Compose lakehouse with LDAP identity, Ranger authorization,
+Spark processing, Iceberg tables, and governed analytics.
 
 ## Architecture
 
@@ -171,7 +166,7 @@ years of realistic commerce history; later runs append non-overlapping 30-day
 periods. Spark validates all three curated gold models before Cube exposes
 them.
 
-## Quick Start
+## Start
 
 ### Requirements
 
@@ -202,31 +197,21 @@ store. LDAP usernames and passwords are stored in the ignored `.env` file.
 | Control panel | `http://127.0.0.1:8501` |
 | Airflow | `http://127.0.0.1:8080` or `https://airflow.lakehouse.local` |
 | Spark | `http://127.0.0.1:8081` |
-| Ranger | `https://ranger.lakehouse.local` |
+| Ranger | `http://127.0.0.1:6080` or `https://ranger.lakehouse.local` |
 | Superset | `http://127.0.0.1:8088` or `https://superset.lakehouse.local` |
 | Cube | `https://cube.lakehouse.local` |
 | Trino | `https://127.0.0.1:8443` |
 | PostgreSQL source | `localhost:5432`, database `retail` |
 | OpenLDAP | `ldaps://localhost:636` |
 
-### Access Model
-
-The stack deliberately uses two access patterns:
+### Access
 
 | Pattern | Services | Purpose |
 | --- | --- | --- |
 | Traefik HTTPS | Airflow, Ranger, Superset, Cube | Friendly browser hostnames, shared TLS termination, and Docker-label discovery |
-| Direct localhost | Control panel, Airflow, Spark, Superset, Trino | Immediate host-only operations and JDBC connectivity without publishing services to the LAN |
+| Direct localhost | Control panel, Airflow, Ranger, Spark, Superset, Trino | Immediate host-only operations and JDBC connectivity without publishing services to the LAN |
 
-Traefik routes are declared on each participating service with
-`traefik.enable`, router, TLS, and load-balancer port labels. Airflow appears in
-both patterns: the HTTPS hostname is the secure browser route, while port
-`8080` is a localhost-only convenience endpoint. Spark uses its master as a
-reverse proxy for worker and live application pages. Trino retains native TLS
-on `8443` because JDBC clients such as DBeaver connect directly to the
-coordinator.
-
-## Demo Personas
+## Identities
 
 | Identity | Platform role | Data access |
 | --- | --- | --- |
@@ -234,28 +219,14 @@ coordinator.
 | `LDAP_ENGINEER_USERNAME` (`bob.engineer` by default) | Airflow Op, Superset Alpha | Read/write access across the lakehouse |
 | `svc_cube` | Non-human LDAP identity | Least-privilege access to required gold tables |
 
-Human identities live in LDAP. Application databases may cache identity
-metadata, but they do not define separate human passwords. Cross-user
-impersonation is intentionally disabled.
-
-## Run the Demo
+## Pipeline
 
 ```bash
 ./lakehouse.sh pipeline
 ROWS=5000 SEED=100 ./lakehouse.sh pipeline
 ```
 
-The DAG generates correlated commerce records, loads bronze tables, produces
-silver and gold models, and runs Spark quality checks. Open Airflow to follow
-the run and Superset to explore Executive Commerce, Product & Sales, and
-Customer & Operations.
-
-The control panel offers the same trigger through a browser and displays recent
-DAG runs and task status without a user-facing login. Because it is bound only
-to `127.0.0.1`, it operates in local convenience mode and uses the configured
-engineer identity internally when calling Airflow.
-
-## Connect DBeaver
+## DBeaver
 
 Create a Trino connection with:
 
@@ -265,15 +236,7 @@ User:     value of LDAP_ANALYST_USERNAME or LDAP_ENGINEER_USERNAME in .env
 Password: corresponding LDAP password in .env
 ```
 
-For a copy-ready TLS truststore example, including the `keytool` command,
-password, and exact DBeaver driver properties, see
-[`docs/operations.md`](docs/operations.md#dbeaver).
-
-Queries authenticate against LDAP and are authorized by Ranger. For example,
-The configured analyst receives the analyst policy and column masking, while
-the configured engineer receives engineering access. Both roles can read the
-`system.jdbc` metadata required by DBeaver without receiving additional access
-to lakehouse tables.
+Detailed TLS driver settings are in [operations](docs/operations.md#dbeaver).
 
 ## Repository Map
 
@@ -285,7 +248,7 @@ analytics/        Cube models and Superset bootstrap code
 control-panel/    Streamlit pipeline operations UI
 operations/       Lifecycle and operational automation
 tests/            Static and integration smoke tests
-docs/             Architecture, security, operations, and decisions
+docs/             Architecture, security, and operations
 ```
 
 Each domain includes its own README:
@@ -314,5 +277,3 @@ CONFIRM_RESET=yes ./lakehouse.sh reset
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)
 - [Operations guide](docs/operations.md)
-- [Architecture decisions](docs/decisions.md)
-- [Container image provenance](docs/images.md)

@@ -31,10 +31,8 @@ OpenLDAP is authoritative for human users and group membership. Airflow,
 Superset, Ranger, and Trino authenticate against LDAP. Application metadata
 databases may cache user records but do not define independent human passwords.
 
-The localhost-only control panel has no user-facing authentication. It obtains
-an Airflow token with the configured engineer LDAP identity and keeps only the
-JWT in Streamlit session state. This convenience boundary is appropriate only
-while the panel remains bound to loopback.
+The localhost-only control panel obtains an Airflow token with the configured
+engineer LDAP identity and keeps only the JWT in Streamlit session state.
 
 Non-human PostgreSQL roles, Garage access keys, Polaris credentials, and the
 `svc_cube` LDAP account are service identities generated into `.env`.
@@ -73,8 +71,7 @@ and Trino terminates TLS natively for JDBC. The CA at
 `platform/config/pki/ca.crt` is intended only for this local environment.
 
 Traefik reads Docker metadata through a read-only socket mount and ignores
-unlabeled services. A production deployment should place a restricted Docker
-API proxy between Traefik and the daemon or use an orchestrator-native provider.
+unlabeled services.
 
 Direct Airflow, Spark, control-panel, and Trino ports bind to `127.0.0.1`.
 Airflow and the control panel therefore use HTTP only across the local loopback
@@ -89,9 +86,7 @@ the ignored PKI directory through the file provider.
 ## Secrets
 
 Secrets live in ignored `.env` and `platform/config/pki` paths. Generated
-service-owned configuration and truststores are also ignored. Compose
-environment variables are acceptable for this isolated POC but should be
-replaced by a secret manager or orchestrator secrets in production.
+service-owned configuration and truststores are also ignored.
 
 ## Enforcement Boundaries
 
@@ -100,5 +95,4 @@ They remain internal and accept engine service credentials only. Direct human
 access to Spark, Polaris, Garage, and platform metadata databases is outside the
 supported access path.
 
-Ranger audit events are retained in container logs through Log4j. Production
-should add a supported searchable audit destination with retention and alerts.
+Ranger audit events are retained in container logs through Log4j.

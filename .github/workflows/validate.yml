@@ -25,6 +25,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+          python -m pip install --requirement control-panel/requirements.txt
+
       - name: Generate disposable local configuration
         run: ./lakehouse.sh init
 

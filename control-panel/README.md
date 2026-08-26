@@ -5,13 +5,8 @@ The Streamlit control panel provides a focused operational UI for the
 
 ## Access
 
-Open `http://127.0.0.1:8501`. The panel has no user-facing login and is intended
-only as a local convenience interface.
-
-The port is bound to `127.0.0.1` and is intentionally not routed through
-Traefik. This keeps the operational POC immediately available on the Docker
-host without adding another public hostname. Airflow itself remains reachable
-through both `http://127.0.0.1:8080` and its Traefik HTTPS route.
+Endpoint: `http://127.0.0.1:8501`. The panel is loopback-only and has no
+user-facing login.
 
 The panel silently obtains an Airflow API token with
 `LDAP_ENGINEER_USERNAME` and `LDAP_ENGINEER_PASSWORD` from `.env`. Airflow still
@@ -48,6 +43,5 @@ sequenceDiagram
   Airflow-->>Panel: State and timing
 ```
 
-The application calls only the supported Airflow REST API and never reads the
-Airflow metadata database. The internal password is supplied through the
-container environment and is never entered or displayed in the UI.
+The application uses the Airflow REST API; the internal password remains in the
+container environment.

@@ -15,31 +15,6 @@ random_ranger_password() {
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  cat >> .env <<EOF
-POSTGRES_ADMIN_PASSWORD=$(random_hex)
-AIRFLOW_DB_PASSWORD=$(random_hex)
-RANGER_DB_PASSWORD=$(random_hex)
-POLARIS_DB_PASSWORD=$(random_hex)
-SUPERSET_DB_PASSWORD=$(random_hex)
-SOURCE_DB_PASSWORD=$(random_hex)
-LDAP_ADMIN_PASSWORD=$(random_hex)
-LDAP_CONFIG_PASSWORD=$(random_hex)
-LDAP_ANALYST_PASSWORD=$(random_hex 12)
-LDAP_ENGINEER_PASSWORD=$(random_hex 12)
-CUBE_LDAP_PASSWORD=$(random_hex)
-RANGER_ADMIN_PASSWORD=$(random_ranger_password)
-POLARIS_ROOT_PASSWORD=$(random_hex)
-POLARIS_SPARK_CLIENT_ID=root
-POLARIS_SPARK_CLIENT_SECRET=\${POLARIS_ROOT_PASSWORD}
-POLARIS_TRINO_CLIENT_ID=root
-POLARIS_TRINO_CLIENT_SECRET=\${POLARIS_ROOT_PASSWORD}
-GARAGE_ACCESS_KEY=GK$(random_hex 16)
-GARAGE_SECRET_KEY=$(random_hex 32)
-CUBE_API_SECRET=$(random_hex 32)
-CUBE_SQL_PASSWORD=$(random_hex)
-AIRFLOW_SECRET_KEY=$(random_hex 32)
-SUPERSET_SECRET_KEY=$(random_hex 32)
-EOF
   chmod 600 .env
 fi
 
@@ -52,22 +27,103 @@ ensure_env_value() {
   local value="$2"
   if ! grep -q "^${key}=" .env; then
     printf '%s=%s\n' "${key}" "${value}" >> .env
+  elif [[ -z "$(env_value "${key}")" ]]; then
+    sed -i "s|^${key}=.*|${key}=${value}|" .env
   fi
 }
 
+write_env_group() {
+  local key
+  for key in "$@"; do
+    if grep -q "^${key}=" .env; then
+      printf '%s=%s\n' "${key}" "$(env_value "${key}")"
+    fi
+  done
+}
+
+organize_env() {
+  local temporary_file
+  temporary_file="$(mktemp)"
+  {
+    printf '# Compose runtime\n'
+    write_env_group COMPOSE_PROJECT_NAME LAKEHOUSE_DOMAIN AIRFLOW_UID LAKEHOUSE_TIMEZONE
+
+    printf '\n# Database credentials\n'
+    write_env_group POSTGRES_ADMIN_PASSWORD AIRFLOW_DB_PASSWORD RANGER_DB_PASSWORD \
+      POLARIS_DB_PASSWORD SUPERSET_DB_PASSWORD SOURCE_DB_PASSWORD
+
+    printf '\n# LDAP identities\n'
+    write_env_group LDAP_ADMIN_PASSWORD LDAP_CONFIG_PASSWORD LDAP_ANALYST_USERNAME \
+      LDAP_ANALYST_PASSWORD LDAP_ENGINEER_USERNAME LDAP_ENGINEER_PASSWORD CUBE_LDAP_PASSWORD
+
+    printf '\n# Ranger and Polaris\n'
+    write_env_group RANGER_ADMIN_PASSWORD POLARIS_ROOT_PASSWORD POLARIS_SPARK_CLIENT_ID \
+      POLARIS_SPARK_CLIENT_SECRET POLARIS_TRINO_CLIENT_ID POLARIS_TRINO_CLIENT_SECRET
+
+    printf '\n# Garage object storage\n'
+    write_env_group GARAGE_ACCESS_KEY GARAGE_SECRET_KEY GARAGE_RPC_SECRET GARAGE_ADMIN_TOKEN \
+      GARAGE_METRICS_TOKEN
+
+    printf '\n# Application secrets\n'
+    write_env_group CUBE_API_SECRET CUBE_SQL_PASSWORD AIRFLOW_SECRET_KEY SUPERSET_SECRET_KEY \
+      TRINO_SHARED_SECRET
+
+    while IFS= read -r line; do
+      case "${line%%=*}" in
+        '# Compose runtime'|'# Database credentials'|'# LDAP identities'|'# Ranger and Polaris'|'# Garage object storage'|'# Application secrets')
+          ;;
+        COMPOSE_PROJECT_NAME|LAKEHOUSE_DOMAIN|AIRFLOW_UID|LAKEHOUSE_TIMEZONE|POSTGRES_ADMIN_PASSWORD|AIRFLOW_DB_PASSWORD|RANGER_DB_PASSWORD|POLARIS_DB_PASSWORD|SUPERSET_DB_PASSWORD|SOURCE_DB_PASSWORD|LDAP_ADMIN_PASSWORD|LDAP_CONFIG_PASSWORD|LDAP_ANALYST_USERNAME|LDAP_ANALYST_PASSWORD|LDAP_ENGINEER_USERNAME|LDAP_ENGINEER_PASSWORD|CUBE_LDAP_PASSWORD|RANGER_ADMIN_PASSWORD|POLARIS_ROOT_PASSWORD|POLARIS_SPARK_CLIENT_ID|POLARIS_SPARK_CLIENT_SECRET|POLARIS_TRINO_CLIENT_ID|POLARIS_TRINO_CLIENT_SECRET|GARAGE_ACCESS_KEY|GARAGE_SECRET_KEY|GARAGE_RPC_SECRET|GARAGE_ADMIN_TOKEN|GARAGE_METRICS_TOKEN|CUBE_API_SECRET|CUBE_SQL_PASSWORD|AIRFLOW_SECRET_KEY|SUPERSET_SECRET_KEY|TRINO_SHARED_SECRET)
+          ;;
+        '')
+          ;;
+        *)
+          printf '%s\n' "${line}"
+          ;;
+      esac
+    done < .env
+  } > "${temporary_file}"
+  mv "${temporary_file}" .env
+  chmod 600 .env
+}
+
+ensure_env_value COMPOSE_PROJECT_NAME onprem-lakehouse
+ensure_env_value LAKEHOUSE_DOMAIN lakehouse.local
+ensure_env_value AIRFLOW_UID 50000
+ensure_env_value LAKEHOUSE_TIMEZONE Europe/Berlin
 ensure_env_value LDAP_ANALYST_USERNAME alice.analyst
 ensure_env_value LDAP_ENGINEER_USERNAME bob.engineer
 # Preserve passwords created by the earlier persona-specific variable names.
 ensure_env_value LDAP_ANALYST_PASSWORD "$(env_value ALICE_PASSWORD || true)"
 ensure_env_value LDAP_ENGINEER_PASSWORD "$(env_value BOB_PASSWORD || true)"
-
-if [[ -z "$(env_value LDAP_ANALYST_PASSWORD)" ]]; then
-  sed -i "s/^LDAP_ANALYST_PASSWORD=.*/LDAP_ANALYST_PASSWORD=$(random_hex 12)/" .env
-fi
-if [[ -z "$(env_value LDAP_ENGINEER_PASSWORD)" ]]; then
-  sed -i "s/^LDAP_ENGINEER_PASSWORD=.*/LDAP_ENGINEER_PASSWORD=$(random_hex 12)/" .env
-fi
 sed -i '/^ALICE_PASSWORD=/d; /^BOB_PASSWORD=/d' .env
+
+ensure_env_value POSTGRES_ADMIN_PASSWORD "$(random_hex)"
+ensure_env_value AIRFLOW_DB_PASSWORD "$(random_hex)"
+ensure_env_value RANGER_DB_PASSWORD "$(random_hex)"
+ensure_env_value POLARIS_DB_PASSWORD "$(random_hex)"
+ensure_env_value SUPERSET_DB_PASSWORD "$(random_hex)"
+ensure_env_value SOURCE_DB_PASSWORD "$(random_hex)"
+ensure_env_value LDAP_ADMIN_PASSWORD "$(random_hex)"
+ensure_env_value LDAP_CONFIG_PASSWORD "$(random_hex)"
+ensure_env_value LDAP_ANALYST_PASSWORD "$(random_hex 12)"
+ensure_env_value LDAP_ENGINEER_PASSWORD "$(random_hex 12)"
+ensure_env_value CUBE_LDAP_PASSWORD "$(random_hex)"
+ensure_env_value RANGER_ADMIN_PASSWORD "$(random_ranger_password)"
+ensure_env_value POLARIS_ROOT_PASSWORD "$(random_hex)"
+ensure_env_value POLARIS_SPARK_CLIENT_ID root
+ensure_env_value POLARIS_SPARK_CLIENT_SECRET '${POLARIS_ROOT_PASSWORD}'
+ensure_env_value POLARIS_TRINO_CLIENT_ID root
+ensure_env_value POLARIS_TRINO_CLIENT_SECRET '${POLARIS_ROOT_PASSWORD}'
+ensure_env_value GARAGE_ACCESS_KEY "GK$(random_hex 16)"
+ensure_env_value GARAGE_SECRET_KEY "$(random_hex 32)"
+ensure_env_value GARAGE_RPC_SECRET "$(random_hex 32)"
+ensure_env_value GARAGE_ADMIN_TOKEN "$(random_hex 32)"
+ensure_env_value GARAGE_METRICS_TOKEN "$(random_hex 32)"
+ensure_env_value CUBE_API_SECRET "$(random_hex 32)"
+ensure_env_value CUBE_SQL_PASSWORD "$(random_hex)"
+ensure_env_value AIRFLOW_SECRET_KEY "$(random_hex 32)"
+ensure_env_value SUPERSET_SECRET_KEY "$(random_hex 32)"
+ensure_env_value TRINO_SHARED_SECRET "$(random_hex 64)"
 
 analyst_username="$(env_value LDAP_ANALYST_USERNAME)"
 engineer_username="$(env_value LDAP_ENGINEER_USERNAME)"
@@ -82,21 +138,7 @@ if [[ "${analyst_username}" == "${engineer_username}" ]]; then
   exit 1
 fi
 
-ensure_env_value GARAGE_RPC_SECRET "$(random_hex 32)"
-ensure_env_value GARAGE_ADMIN_TOKEN "$(random_hex 32)"
-ensure_env_value GARAGE_METRICS_TOKEN "$(random_hex 32)"
-
-if ! grep -q '^TRINO_SHARED_SECRET=' .env; then
-  printf 'TRINO_SHARED_SECRET=%s\n' "$(random_hex 64)" >> .env
-fi
-
-if ! grep -q '^TRAEFIK_IMAGE=' .env; then
-  printf 'TRAEFIK_IMAGE=traefik:v3.7.1\n' >> .env
-fi
-if ! grep -q '^CONTROL_PANEL_IMAGE=' .env; then
-  printf 'CONTROL_PANEL_IMAGE=onprem-lakehouse/control-panel:1.0.0\n' >> .env
-fi
-sed -i '/^CADDY_IMAGE=/d' .env
+sed -i '/^[A-Z_][A-Z0-9_]*_IMAGE=/d' .env
 
 current_ranger_password="$(sed -n 's/^RANGER_ADMIN_PASSWORD=//p' .env | tail -n 1)"
 if [[ ! "${current_ranger_password}" =~ [A-Z] ]] \
@@ -104,6 +146,8 @@ if [[ ! "${current_ranger_password}" =~ [A-Z] ]] \
   || [[ ! "${current_ranger_password}" =~ [0-9] ]]; then
   sed -i "s/^RANGER_ADMIN_PASSWORD=.*/RANGER_ADMIN_PASSWORD=$(random_ranger_password)/" .env
 fi
+
+organize_env
 
 set -a
 # shellcheck disable=SC1091

@@ -1,7 +1,6 @@
 # Analytics
 
-Cube Core provides governed commerce semantics and Superset provides the
-portfolio-ready presentation layer.
+Cube Core provides governed commerce semantics and Superset provides dashboards.
 
 ## Semantic Models
 

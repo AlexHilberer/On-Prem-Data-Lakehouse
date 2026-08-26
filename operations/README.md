@@ -16,14 +16,5 @@ under `operations/scripts/` and are called by the root CLI.
 | `./lakehouse.sh backup` | Back up PostgreSQL, LDAP, and Garage |
 | `CONFIRM_RESET=yes ./lakehouse.sh reset` | Delete persistent platform data |
 
-Startup is phased so identity, metadata, object storage, and orchestration are
-healthy before policies are applied and analytics services begin.
-
-The CLI prints both access classes after startup: named Traefik HTTPS routes
-for browser applications and localhost-only ports for the control panel,
-Airflow, Spark, and Trino. See the
-[operations guide](../docs/operations.md#access-and-routing) for the complete
-matrix and DBeaver instructions.
-
-See the full [operations guide](../docs/operations.md) for host setup,
+See the [operations guide](../docs/operations.md) for endpoints, host setup,
 troubleshooting, backups, and reset behavior.

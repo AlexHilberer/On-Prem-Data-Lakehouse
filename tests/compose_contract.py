@@ -1,6 +1,7 @@
 import configparser
 import json
 from pathlib import Path
+import re
 import subprocess
 import tomllib
 
@@ -14,6 +15,11 @@ configuration = json.loads(
     ).stdout
 )
 services = configuration["services"]
+compose_source = Path("compose.yaml").read_text()
+env_example = Path(".env.example").read_text()
+
+assert not re.search(r"\$\{[A-Z_][A-Z0-9_]*_IMAGE(?::-[^}]*)?\}", compose_source)
+assert not re.search(r"^[A-Z_][A-Z0-9_]*_IMAGE=", env_example, re.MULTILINE)
 
 
 def mounted_config(service_name, target):
@@ -163,6 +169,7 @@ def localhost_ports(service_name):
 
 
 assert localhost_ports("airflow-api") == {(8080, "8080", "127.0.0.1")}
+assert localhost_ports("ranger-admin") == {(6080, "6080", "127.0.0.1")}
 assert localhost_ports("spark-master") == {(8080, "8081", "127.0.0.1")}
 assert localhost_ports("control-panel") == {(8501, "8501", "127.0.0.1")}
 assert localhost_ports("trino") == {(8443, "8443", "127.0.0.1")}

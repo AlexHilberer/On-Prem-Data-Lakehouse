@@ -27,7 +27,7 @@ between files, environment wiring, and secrets.
 | Service | Exposure |
 | --- | --- |
 | Airflow | Traefik HTTPS and direct `127.0.0.1:8080` |
-| Ranger | Traefik HTTPS only |
+| Ranger | Traefik HTTPS and direct `127.0.0.1:6080` |
 | Superset | Traefik HTTPS only |
 | Cube | Traefik HTTPS only |
 | Control panel | Direct `127.0.0.1:8501` only |
@@ -40,11 +40,6 @@ Traefik uses the Docker provider with `exposedByDefault: false`. Participating
 services define `traefik.enable`, router rule, `websecure` entrypoint, TLS, and
 internal load-balancer port labels. Certificates remain in the file provider
 rather than Docker labels.
-
-Ranger is built from the verified Apache source release because no suitable
-official runtime image is available. Polaris combines the official server and
-admin-tool artifacts so relational metadata initialization belongs to the
-primary service rather than a one-shot container.
 
 ## Service Topology
 
@@ -74,5 +69,4 @@ flowchart TD
   DBeaver --> Trino
 ```
 
-See the [image inventory](../docs/images.md) and
-[architecture guide](../docs/architecture.md) for implementation rationale.
+See the [architecture guide](../docs/architecture.md) for deployment topology.
