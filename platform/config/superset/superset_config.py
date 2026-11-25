@@ -1,6 +1,7 @@
 import os
 
-from flask_appbuilder.security.manager import AUTH_LDAP
+from flask_appbuilder.security.manager import AUTH_OAUTH
+from superset.security import SupersetSecurityManager
 
 SECRET_KEY = os.environ["SUPERSET_SECRET_KEY"]
 SQLALCHEMY_DATABASE_URI = (
@@ -9,24 +10,46 @@ SQLALCHEMY_DATABASE_URI = (
 )
 WTF_CSRF_ENABLED = True
 ENABLE_PROXY_FIX = True
-AUTH_TYPE = AUTH_LDAP
-AUTH_LDAP_SERVER = "ldaps://openldap:636"
-AUTH_LDAP_USE_TLS = False
-AUTH_LDAP_ALLOW_SELF_SIGNED = True
-AUTH_LDAP_SEARCH = "ou=people,dc=lakehouse,dc=local"
-AUTH_LDAP_BIND_USER = "cn=admin,dc=lakehouse,dc=local"
-AUTH_LDAP_BIND_PASSWORD = os.environ["LDAP_ADMIN_PASSWORD"]
-AUTH_LDAP_UID_FIELD = "uid"
-AUTH_LDAP_FIRSTNAME_FIELD = "givenName"
-AUTH_LDAP_LASTNAME_FIELD = "sn"
-AUTH_LDAP_EMAIL_FIELD = "mail"
-AUTH_LDAP_GROUP_FIELD = "memberOf"
+
+ISSUER = "https://authentik.lakehouse.local/application/o/lakehouse/"
+AUTH_TYPE = AUTH_OAUTH
+OAUTH_PROVIDERS = [
+    {
+        "name": "authentik",
+        "icon": "fa-key",
+        "token_key": "access_token",
+        "remote_app": {
+            "client_id": "lakehouse",
+            "client_secret": os.environ["OIDC_CLIENT_SECRET"],
+            "server_metadata_url": f"{ISSUER}.well-known/openid-configuration",
+            "api_base_url": ISSUER,
+            "client_kwargs": {"scope": "openid profile email"},
+        },
+    }
+]
+
+
+class LakehouseSecurityManager(SupersetSecurityManager):
+    def oauth_user_info(self, provider, response=None):
+        claims = self.oauth_remotes[provider].get(
+            "https://authentik.lakehouse.local/application/o/userinfo/"
+        ).json()
+        return {
+            "username": claims["preferred_username"],
+            "first_name": claims.get("given_name", ""),
+            "last_name": claims.get("family_name", ""),
+            "email": claims.get("email", ""),
+            "role_keys": claims.get("groups", []),
+        }
+
+
+CUSTOM_SECURITY_MANAGER = LakehouseSecurityManager
 AUTH_USER_REGISTRATION = True
 AUTH_USER_REGISTRATION_ROLE = "Gamma"
 AUTH_ROLES_SYNC_AT_LOGIN = True
 AUTH_ROLES_MAPPING = {
-    "cn=lakehouse_analysts,ou=groups,dc=lakehouse,dc=local": ["Gamma"],
-    "cn=lakehouse_engineers,ou=groups,dc=lakehouse,dc=local": ["Alpha"],
+    "lakehouse_analysts": ["Gamma"],
+    "lakehouse_engineers": ["Alpha"],
 }
 FEATURE_FLAGS = {"DASHBOARD_RBAC": True}
 RECAPTCHA_PUBLIC_KEY = ""

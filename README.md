@@ -86,6 +86,8 @@ task results.
 | `lakehouse-postgres` | Hosts retail source data and the Airflow, Ranger, Polaris, and Superset metadata databases. |
 | `lakehouse-redis` | Holds queued Airflow tasks until the Celery worker accepts them. |
 | `lakehouse-openldap` | Provides identities for analysts, engineers, and service accounts. |
+| `lakehouse-authentik-server`, `lakehouse-authentik-worker` | OIDC identity provider that reads users and groups from OpenLDAP. |
+| `lakehouse-jupyterhub` | Notebook environment; kernels run Spark and Trino as the logged-in user. |
 | `lakehouse-ranger-admin` | Manages Trino authorization and column-masking policies. |
 | `lakehouse-ranger-usersync` | Synchronizes LDAP users and groups into Ranger. |
 | `lakehouse-garage` | Stores Iceberg table objects through an S3-compatible API. |
@@ -181,6 +183,7 @@ Add the local application names:
 ```text
 127.0.0.1 airflow.lakehouse.local ranger.lakehouse.local
 127.0.0.1 superset.lakehouse.local cube.lakehouse.local
+127.0.0.1 authentik.lakehouse.local jupyter.lakehouse.local
 ```
 
 Start the complete platform:
@@ -195,6 +198,8 @@ store. LDAP usernames and passwords are stored in the ignored `.env` file.
 | Service | Endpoint |
 | --- | --- |
 | Control panel | `http://127.0.0.1:8501` |
+| authentik | `https://authentik.lakehouse.local` |
+| JupyterHub | `https://jupyter.lakehouse.local` |
 | Airflow | `http://127.0.0.1:8080` or `https://airflow.lakehouse.local` |
 | Spark | `http://127.0.0.1:8081` |
 | Ranger | `http://127.0.0.1:6080` or `https://ranger.lakehouse.local` |

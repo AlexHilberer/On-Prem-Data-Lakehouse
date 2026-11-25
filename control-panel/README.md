@@ -8,10 +8,10 @@ The Streamlit control panel provides a focused operational UI for the
 Endpoint: `http://127.0.0.1:8501`. The panel is loopback-only and has no
 user-facing login.
 
-The panel silently obtains an Airflow API token with
-`LDAP_ENGINEER_USERNAME` and `LDAP_ENGINEER_PASSWORD` from `.env`. Airflow still
-validates that internal identity through LDAP and authorizes it with the
-engineer role.
+The panel silently obtains an Airflow API token as the local system user
+`svc_control` (`AIRFLOW_SERVICE_USERNAME` and `AIRFLOW_SERVICE_PASSWORD` from
+`.env`). Airflow's UI uses authentik OIDC, and its token endpoint accepts only
+local users, so machines use this account with the Op role.
 
 ## Features
 
@@ -29,12 +29,12 @@ sequenceDiagram
   actor User
   participant Panel as Streamlit
   participant Airflow
-  participant LDAP
+  participant DB as Airflow users
   participant Spark
 
   User->>Panel: Open local operator UI
-  Panel->>Airflow: POST /auth/token with configured engineer
-  Airflow->>LDAP: Validate internal identity and groups
+  Panel->>Airflow: POST /auth/token as svc_control
+  Airflow->>DB: Validate local system user
   Airflow-->>Panel: JWT
   User->>Panel: Trigger rows and seed
   Panel->>Airflow: POST DAG run with JWT

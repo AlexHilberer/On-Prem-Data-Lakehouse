@@ -1,24 +1,46 @@
 import os
 
-from flask_appbuilder.security.manager import AUTH_LDAP
+from airflow.providers.fab.auth_manager.security_manager.override import (
+    FabAirflowSecurityManagerOverride,
+)
+from flask_appbuilder.security.manager import AUTH_OAUTH
 
-AUTH_TYPE = AUTH_LDAP
-AUTH_LDAP_SERVER = "ldaps://openldap:636"
-AUTH_LDAP_USE_TLS = False
-AUTH_LDAP_ALLOW_SELF_SIGNED = True
-AUTH_LDAP_SEARCH = "ou=people,dc=lakehouse,dc=local"
-AUTH_LDAP_BIND_USER = "cn=admin,dc=lakehouse,dc=local"
-AUTH_LDAP_BIND_PASSWORD = os.environ["LDAP_ADMIN_PASSWORD"]
-AUTH_LDAP_UID_FIELD = "uid"
-AUTH_LDAP_FIRSTNAME_FIELD = "givenName"
-AUTH_LDAP_LASTNAME_FIELD = "sn"
-AUTH_LDAP_EMAIL_FIELD = "mail"
-AUTH_LDAP_GROUP_FIELD = "memberOf"
+ISSUER = "https://authentik.lakehouse.local/application/o/lakehouse/"
+
+AUTH_TYPE = AUTH_OAUTH
+OAUTH_PROVIDERS = [
+    {
+        "name": "authentik",
+        "icon": "fa-key",
+        "token_key": "access_token",
+        "remote_app": {
+            "client_id": "lakehouse",
+            "client_secret": os.environ["OIDC_CLIENT_SECRET"],
+            "server_metadata_url": f"{ISSUER}.well-known/openid-configuration",
+            "api_base_url": ISSUER,
+            "client_kwargs": {"scope": "openid profile email"},
+        },
+    }
+]
+
+
+class LakehouseSecurityManager(FabAirflowSecurityManagerOverride):
+    def get_oauth_user_info(self, provider, resp):
+        claims = self.oauth_remotes[provider].userinfo(token=resp)
+        return {
+            "username": claims["preferred_username"],
+            "first_name": claims.get("given_name", ""),
+            "last_name": claims.get("family_name", ""),
+            "email": claims.get("email", ""),
+            "role_keys": claims.get("groups", []),
+        }
+
+
+SECURITY_MANAGER_CLASS = LakehouseSecurityManager
 AUTH_USER_REGISTRATION = True
 AUTH_USER_REGISTRATION_ROLE = "Viewer"
 AUTH_ROLES_SYNC_AT_LOGIN = True
 AUTH_ROLES_MAPPING = {
-    "cn=lakehouse_analysts,ou=groups,dc=lakehouse,dc=local": ["Viewer"],
-    "cn=lakehouse_engineers,ou=groups,dc=lakehouse,dc=local": ["Op"],
+    "lakehouse_analysts": ["Viewer"],
+    "lakehouse_engineers": ["Op"],
 }
-

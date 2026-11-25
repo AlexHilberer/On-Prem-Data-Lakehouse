@@ -6,7 +6,7 @@ The deployment follows these rules:
 
 1. Spark performs all data processing.
 2. Trino performs interactive queries but no transformation jobs.
-3. Human identities originate in LDAP.
+3. Human identities originate in LDAP and are issued as OIDC tokens by authentik; machines use dedicated system identities.
 4. Supported human data access passes through Ranger-enforced Trino.
 
 ## Deployment Topology
@@ -26,6 +26,7 @@ flowchart TB
 
     subgraph Control["Control Plane"]
       LDAP["OpenLDAP"]
+      Authentik["authentik OIDC"]
       Ranger["Ranger Admin"]
       UserSync["Ranger UserSync"]
       AirflowAPI["Airflow API"]
@@ -57,9 +58,10 @@ flowchart TB
   Operator -->|localhost :8081| SparkMaster
   Operator -->|localhost :8088| Superset
   DBeaver -->|native TLS :8443| Trino
-  Traefik --> AirflowAPI & Ranger & Cube & Superset
+  Traefik --> AirflowAPI & Ranger & Cube & Superset & Authentik
   ControlPanel --> AirflowAPI
-  LDAP --> AirflowAPI & Ranger & Superset & Trino
+  LDAP --> Authentik & Ranger & Trino
+  Authentik --> AirflowAPI & Superset & Trino & Polaris
   UserSync --> Ranger
   DagProcessor --> PostgreSQL
   Scheduler --> Redis --> AirflowWorker

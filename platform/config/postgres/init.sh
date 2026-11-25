@@ -22,6 +22,7 @@ create_database airflow airflow "$AIRFLOW_DB_PASSWORD"
 create_database ranger ranger "$RANGER_DB_PASSWORD"
 create_database polaris polaris "$POLARIS_DB_PASSWORD"
 create_database superset superset "$SUPERSET_DB_PASSWORD"
+create_database authentik authentik "$AUTHENTIK_DB_PASSWORD"
 create_database retail source_app "$SOURCE_DB_PASSWORD"
 
 psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname retail <<'SQL'

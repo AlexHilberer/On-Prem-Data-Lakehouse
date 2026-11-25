@@ -120,12 +120,20 @@ polaris_properties = Path(
     "platform/config/polaris/application.properties"
 ).read_text()
 assert "polaris.persistence.type=relational-jdbc" in polaris_properties
-assert (
-    services["polaris"]["environment"]["QUARKUS_CONFIG_LOCATIONS"]
-    == "/deployments/config/application.properties"
+assert services["polaris"]["environment"]["QUARKUS_CONFIG_LOCATIONS"] == (
+    "/deployments/config/application.properties,"
+    "/deployments/config/auth-external.properties"
 )
+assert "polaris.authentication.type=external" in Path(
+    "platform/config/polaris/auth-external.properties"
+).read_text()
+assert "polaris.authentication.type=mixed" in Path(
+    "platform/config/polaris/auth-mixed.properties"
+).read_text()
+assert "polaris.authentication.type" not in polaris_properties
 assert "POLARIS_PERSISTENCE_TYPE" not in services["polaris"]["environment"]
-mounted_config("polaris", "/deployments/config/application.properties")
+for name in ("application", "auth-external", "auth-mixed"):
+    mounted_config("polaris", f"/deployments/config/{name}.properties")
 
 with Path("platform/config/control-panel/config.toml").open("rb") as handle:
     streamlit_config = tomllib.load(handle)
@@ -146,7 +154,14 @@ routed_services = {
     for name, service in services.items()
     if service.get("labels", {}).get("traefik.enable") == "true"
 }
-assert routed_services == {"airflow-api", "cube", "ranger-admin", "superset"}
+assert routed_services == {
+    "airflow-api",
+    "authentik-server",
+    "cube",
+    "jupyterhub",
+    "ranger-admin",
+    "superset",
+}
 
 socket_mount = next(
     mount
@@ -174,11 +189,22 @@ assert localhost_ports("spark-master") == {(8080, "8081", "127.0.0.1")}
 assert localhost_ports("control-panel") == {(8501, "8501", "127.0.0.1")}
 assert localhost_ports("trino") == {(8443, "8443", "127.0.0.1")}
 assert localhost_ports("superset") == {(8088, "8088", "127.0.0.1")}
+assert localhost_ports("jupyterhub") == {(8000, "8000", "127.0.0.1")}
+for target in (
+    "/srv/jupyterhub/jupyterhub_config.py",
+    "/srv/jupyterhub/token_broker.py",
+    "/etc/ipython/ipython_kernel_config.py",
+    "/opt/lakehouse-notebook",
+):
+    mounted_config("jupyterhub", target)
+assert services["jupyterhub"]["hostname"] == "jupyterhub"
+assert services["jupyterhub"]["environment"]["GARAGE_ACCESS_KEY"]
+assert "spark-master" in services["jupyterhub"]["depends_on"]
 assert services["trino"]["hostname"] == "trino"
 assert services["openldap"]["environment"]["LDAP_ANALYST_USERNAME"]
 assert services["openldap"]["environment"]["LDAP_ENGINEER_USERNAME"]
-assert services["control-panel"]["environment"]["LDAP_ENGINEER_USERNAME"]
-assert services["control-panel"]["environment"]["LDAP_ENGINEER_PASSWORD"]
+assert services["control-panel"]["environment"]["AIRFLOW_SERVICE_USERNAME"] == "svc_control"
+assert services["control-panel"]["environment"]["AIRFLOW_SERVICE_PASSWORD"]
 
 garage_config = next(
     mount

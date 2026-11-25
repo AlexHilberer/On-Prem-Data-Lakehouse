@@ -10,8 +10,8 @@ from airflow_client import AirflowClient
 
 AIRFLOW_URL = os.getenv("AIRFLOW_API_URL", "http://airflow-api:8080")
 DAG_ID = os.getenv("AIRFLOW_DAG_ID", "retail_lakehouse_pipeline")
-AIRFLOW_USERNAME = os.environ["LDAP_ENGINEER_USERNAME"]
-AIRFLOW_PASSWORD = os.environ["LDAP_ENGINEER_PASSWORD"]
+AIRFLOW_USERNAME = os.environ["AIRFLOW_SERVICE_USERNAME"]
+AIRFLOW_PASSWORD = os.environ["AIRFLOW_SERVICE_PASSWORD"]
 ACTIVE_STATES = {"queued", "running"}
 
 st.set_page_config(

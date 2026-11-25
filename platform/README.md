@@ -5,8 +5,10 @@ for the lakehouse services.
 
 ## Responsibilities
 
-- Build the extended Airflow, OpenLDAP, Polaris, Ranger, Spark, Superset, and control-panel images.
-- Configure PostgreSQL, Redis, Garage, Trino, Traefik, Ranger, and application authentication.
+- Build the extended Airflow, JupyterHub, OpenLDAP, Polaris, Ranger, Spark, Superset, and control-panel images.
+- Configure PostgreSQL, Redis, Garage, Trino, Traefik, Ranger, authentik, and application authentication.
+- Provide the notebook environment: `config/jupyterhub/` holds the hub config, the token broker,
+  and the `lakehouse_notebook` package loaded into every kernel (`spark_builder`, `get_token`, `%sql`).
 - Hold generated local PKI beneath `config/pki`; private material is ignored.
 - Keep every runtime version pinned and every service health-checkable.
 
@@ -50,8 +52,9 @@ flowchart TD
   PostgreSQL --> AirflowAPI["Airflow API"]
   PostgreSQL --> Superset
   OpenLDAP --> Ranger
-  OpenLDAP --> AirflowAPI
-  OpenLDAP --> Superset
+  OpenLDAP --> Authentik
+  Authentik --> AirflowAPI
+  Authentik --> Superset
   Garage --> Polaris
   Polaris --> Spark
   Polaris --> Trino

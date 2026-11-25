@@ -131,6 +131,34 @@ EOF
   printf '%s' "${previous_dn}"
 }
 
+reconcile_bind_account() {
+  local account="$1"
+  local password="$2"
+  local dn="uid=${account},ou=people,dc=lakehouse,dc=local"
+  local password_hash
+  password_hash="$(slappasswd -s "${password}")"
+  if ldapsearch "${ldap_args[@]}" -LLL -b "${dn}" -s base '(objectClass=*)' dn >/dev/null 2>&1; then
+    ldapmodify "${ldap_args[@]}" >/dev/null <<LDIF
+dn: ${dn}
+changetype: modify
+replace: userPassword
+userPassword: ${password_hash}
+LDIF
+  else
+    ldapadd "${ldap_args[@]}" >/dev/null <<LDIF
+dn: ${dn}
+objectClass: inetOrgPerson
+uid: ${account}
+cn: ${account}
+sn: Service
+userPassword: ${password_hash}
+LDIF
+  fi
+}
+
+# Read-only bind account for authentik; deliberately not in any group.
+reconcile_bind_account svc_authentik "${LDAP_AUTHENTIK_PASSWORD}"
+
 previous_analyst_dn="$(reconcile_user \
   "${LDAP_ANALYST_USERNAME}" "${LDAP_ANALYST_PASSWORD}" \
   lakehouse-demo-analyst alice.analyst \

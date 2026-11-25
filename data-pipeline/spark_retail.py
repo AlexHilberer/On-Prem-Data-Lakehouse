@@ -46,13 +46,12 @@ def jdbc_query(spark: SparkSession, database_url: str, query: str) -> DataFrame:
 
 
 def configure_session() -> SparkSession:
-    client_id = os.environ["POLARIS_SPARK_CLIENT_ID"]
-    client_secret = os.environ["POLARIS_SPARK_CLIENT_SECRET"]
+    client_secret = os.environ["OIDC_PIPELINE_CLIENT_SECRET"]
     garage_key = os.environ["GARAGE_ACCESS_KEY"]
     garage_secret = os.environ["GARAGE_SECRET_KEY"]
     return (
         SparkSession.builder.appName("retail-lakehouse")
-        .config("spark.sql.catalog.lakehouse.credential", f"{client_id}:{client_secret}")
+        .config("spark.sql.catalog.lakehouse.credential", f"lakehouse:{client_secret}")
         .config("spark.sql.catalog.lakehouse.client.region", "garage")
         .config("spark.sql.catalog.lakehouse.s3.endpoint", "http://garage:3900")
         .config("spark.sql.catalog.lakehouse.s3.path-style-access", "true")
@@ -63,8 +62,6 @@ def configure_session() -> SparkSession:
         .config("spark.sql.iceberg.merge-schema", "true")
         .config("spark.executorEnv.AWS_REQUEST_CHECKSUM_CALCULATION", "WHEN_REQUIRED")
         .config("spark.executorEnv.AWS_RESPONSE_CHECKSUM_VALIDATION", "WHEN_REQUIRED")
-        .config("spark.executorEnv.POLARIS_SPARK_CLIENT_ID", client_id)
-        .config("spark.executorEnv.POLARIS_SPARK_CLIENT_SECRET", client_secret)
         .config("spark.executorEnv.GARAGE_ACCESS_KEY", garage_key)
         .config("spark.executorEnv.GARAGE_SECRET_KEY", garage_secret)
         .getOrCreate()

@@ -5,7 +5,8 @@ if (( $# > 0 )); then
   services=("$@")
 else
   services=(
-    postgres redis openldap ranger-admin ranger-usersync garage polaris
+    postgres redis openldap ranger-admin ranger-usersync garage authentik-server authentik-worker polaris
+    jupyterhub
     spark-master spark-worker airflow-api airflow-scheduler airflow-worker
     airflow-dag-processor control-panel trino cube superset traefik
   )

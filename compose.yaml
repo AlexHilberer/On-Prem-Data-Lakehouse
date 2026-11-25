@@ -25,16 +25,18 @@ x-airflow-common: &airflow-common
     # PostgreSQL retains completed task results while Redis only queues work.
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
     AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    # Traefik terminates TLS, so OIDC redirect URIs must honor the forwarded scheme.
+    AIRFLOW__FAB__ENABLE_PROXY_FIX: "True"
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY}
     AIRFLOW_CONN_RETAIL_SOURCE: postgresql://source_app:${SOURCE_DB_PASSWORD}@postgres:5432/retail
     AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
     AIRFLOW_VAR_LAKEHOUSE_BATCH_ROWS: "0"
-    LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+    OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+    REQUESTS_CA_BUNDLE: /opt/airflow/certs/ca.crt
+    SSL_CERT_FILE: /opt/airflow/certs/ca.crt
     LDAP_ANALYST_USERNAME: ${LDAP_ANALYST_USERNAME}
     LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
-    LDAPTLS_CACERT: /opt/airflow/certs/ca.crt
-    POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
-    POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+    OIDC_PIPELINE_CLIENT_SECRET: ${OIDC_PIPELINE_CLIENT_SECRET}
     GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
     GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
     AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
@@ -50,8 +52,34 @@ x-airflow-common: &airflow-common
     - ./platform/config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     - ./platform/config/spark/spark-env.sh:/opt/spark/conf/spark-env.sh:ro
     - ./platform/config/pki/ca.crt:/opt/airflow/certs/ca.crt:ro
+    - ./platform/config/trino/dbeaver-trino-truststore.p12:/opt/airflow/certs/lakehouse-truststore.p12:ro
     - ./operations/scripts/bootstrap-platform.sh:/opt/airflow/bootstrap/bootstrap-platform.sh:ro
     - ./platform/config/ranger/policies:/opt/airflow/bootstrap/policies:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    openldap:
+      condition: service_healthy
+
+x-authentik-common: &authentik-common
+  <<: *service-defaults
+  image: ghcr.io/goauthentik/server:2025.10.1
+  environment:
+    AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+    AUTHENTIK_POSTGRESQL__HOST: postgres
+    AUTHENTIK_POSTGRESQL__NAME: authentik
+    AUTHENTIK_POSTGRESQL__USER: authentik
+    AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD}
+    AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD}
+    AUTHENTIK_BOOTSTRAP_EMAIL: akadmin@lakehouse.local
+    LDAP_AUTHENTIK_PASSWORD: ${LDAP_AUTHENTIK_PASSWORD}
+    OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+    SVC_PIPELINE_TOKEN: ${SVC_PIPELINE_TOKEN}
+    SVC_TRINO_TOKEN: ${SVC_TRINO_TOKEN}
+    SVC_POLARIS_ADMIN_TOKEN: ${SVC_POLARIS_ADMIN_TOKEN}
+  volumes:
+    - ./platform/config/authentik/blueprints:/blueprints/custom:ro
+    - ./platform/config/pki/ca.crt:/certs/ca.crt:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -73,6 +101,7 @@ services:
       RANGER_DB_PASSWORD: ${RANGER_DB_PASSWORD}
       POLARIS_DB_PASSWORD: ${POLARIS_DB_PASSWORD}
       SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      AUTHENTIK_DB_PASSWORD: ${AUTHENTIK_DB_PASSWORD}
       SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -127,6 +156,7 @@ services:
       LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
       LDAP_ENGINEER_PASSWORD: ${LDAP_ENGINEER_PASSWORD}
       CUBE_LDAP_PASSWORD: ${CUBE_LDAP_PASSWORD}
+      LDAP_AUTHENTIK_PASSWORD: ${LDAP_AUTHENTIK_PASSWORD}
     volumes:
       - ldap_data:/var/lib/openldap
       - ldap_config:/etc/openldap/slapd.d
@@ -247,7 +277,7 @@ services:
       context: .
       dockerfile: platform/images/polaris/Dockerfile
     environment:
-      QUARKUS_CONFIG_LOCATIONS: /deployments/config/application.properties
+      QUARKUS_CONFIG_LOCATIONS: /deployments/config/application.properties,/deployments/config/auth-${POLARIS_AUTHENTICATION_TYPE:-external}.properties
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
       QUARKUS_DATASOURCE_USERNAME: polaris
       QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
@@ -259,15 +289,20 @@ services:
       AWS_REGION: garage
       AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
       AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
-      JAVA_TOOL_OPTIONS: -Daws.requestChecksumCalculation=WHEN_REQUIRED -Daws.responseChecksumValidation=WHEN_REQUIRED
+      JAVA_TOOL_OPTIONS: -Daws.requestChecksumCalculation=WHEN_REQUIRED -Daws.responseChecksumValidation=WHEN_REQUIRED -Djavax.net.ssl.trustStore=/run/certs/lakehouse-truststore.p12 -Djavax.net.ssl.trustStoreType=PKCS12 -Djavax.net.ssl.trustStorePassword=changeit
     volumes:
+      - ./platform/config/trino/dbeaver-trino-truststore.p12:/run/certs/lakehouse-truststore.p12:ro
       - ./platform/config/polaris/application.properties:/deployments/config/application.properties:ro
+      - ./platform/config/polaris/auth-external.properties:/deployments/config/auth-external.properties:ro
+      - ./platform/config/polaris/auth-mixed.properties:/deployments/config/auth-mixed.properties:ro
       - ./platform/config/pki/polaris-token.key:/run/certs/polaris-token.key:ro
       - ./platform/config/pki/polaris-token.pub:/run/certs/polaris-token.pub:ro
     depends_on:
       postgres:
         condition: service_healthy
       garage:
+        condition: service_healthy
+      traefik:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8182/q/health/ready"]
@@ -293,8 +328,6 @@ services:
       SPARK_MASTER_PORT: "7077"
       SPARK_MASTER_WEBUI_PORT: "8080"
       SPARK_MASTER_OPTS: -Dspark.ui.reverseProxy=true -Dspark.ui.reverseProxyUrl=http://127.0.0.1:8081
-      POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
-      POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
       GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
       GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
     volumes:
@@ -331,8 +364,6 @@ services:
       SPARK_WORKER_MEMORY: 1536m
       SPARK_WORKER_WEBUI_PORT: "8081"
       SPARK_WORKER_OPTS: -Dspark.ui.reverseProxy=true -Dspark.ui.reverseProxyUrl=http://127.0.0.1:8081
-      POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
-      POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
       GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
       GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
     volumes:
@@ -437,8 +468,8 @@ services:
     environment:
       AIRFLOW_API_URL: http://airflow-api:8080
       AIRFLOW_DAG_ID: retail_lakehouse_pipeline
-      LDAP_ENGINEER_USERNAME: ${LDAP_ENGINEER_USERNAME}
-      LDAP_ENGINEER_PASSWORD: ${LDAP_ENGINEER_PASSWORD}
+      AIRFLOW_SERVICE_USERNAME: svc_control
+      AIRFLOW_SERVICE_PASSWORD: ${AIRFLOW_SERVICE_PASSWORD}
     command: ["streamlit", "run", "app.py"]
     volumes:
       - ./platform/config/control-panel/config.toml:/tmp/.streamlit/config.toml:ro
@@ -464,17 +495,19 @@ services:
     image: trinodb/trino:481
     environment:
       CUBE_LDAP_PASSWORD: ${CUBE_LDAP_PASSWORD}
-      POLARIS_TRINO_CLIENT_ID: ${POLARIS_TRINO_CLIENT_ID}
-      POLARIS_TRINO_CLIENT_SECRET: ${POLARIS_TRINO_CLIENT_SECRET}
+      OIDC_TRINO_CLIENT_SECRET: ${OIDC_TRINO_CLIENT_SECRET}
       GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
       GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
       TRINO_SHARED_SECRET: ${TRINO_SHARED_SECRET}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
     volumes:
       - ./platform/config/trino:/etc/trino:ro
       - ./platform/config/pki:/run/certs:ro
     ports:
       - "127.0.0.1:8443:8443"
     depends_on:
+      traefik:
+        condition: service_healthy
       ranger-admin:
         condition: service_healthy
       polaris:
@@ -542,8 +575,9 @@ services:
       SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
       SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
-      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
-      LDAPTLS_CACERT: /run/certs/ca.crt
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      SSL_CERT_FILE: /run/certs/ca.crt
+      REQUESTS_CA_BUNDLE: /run/certs/ca.crt
       CUBE_SQL_PASSWORD: ${CUBE_SQL_PASSWORD}
     volumes:
       - ./platform/config/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
@@ -573,10 +607,95 @@ services:
         limits:
           memory: 768m
 
+  authentik-server:
+    container_name: lakehouse-authentik-server
+    <<: *authentik-common
+    command: server
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.authentik.rule: Host(`authentik.lakehouse.local`)
+      traefik.http.routers.authentik.entrypoints: websecure
+      traefik.http.routers.authentik.tls: "true"
+      traefik.http.services.authentik.loadbalancer.server.port: "9000"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  authentik-worker:
+    container_name: lakehouse-authentik-worker
+    <<: *authentik-common
+    command: worker
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  jupyterhub:
+    container_name: lakehouse-jupyterhub
+    <<: *service-defaults
+    hostname: jupyterhub
+    image: onprem-lakehouse/jupyterhub:5.3.0
+    build:
+      context: .
+      dockerfile: platform/images/jupyterhub/Dockerfile
+    environment:
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      JUPYTERHUB_CRYPT_KEY: ${JUPYTERHUB_CRYPT_KEY}
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY}
+      SSL_CERT_FILE: /run/certs/ca.crt
+      REQUESTS_CA_BUNDLE: /run/certs/ca.crt
+    volumes:
+      - ./platform/config/jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
+      - ./platform/config/jupyterhub/token_broker.py:/srv/jupyterhub/token_broker.py:ro
+      - ./platform/config/jupyterhub/ipython_kernel_config.py:/etc/ipython/ipython_kernel_config.py:ro
+      - ./platform/config/jupyterhub/notebook:/opt/lakehouse-notebook:ro
+      - ./platform/config/pki/ca.crt:/run/certs/ca.crt:ro
+      - jupyterhub_data:/data
+      - jupyterhub_home:/home
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/hub/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.jupyter.rule: Host(`jupyter.lakehouse.local`)
+      traefik.http.routers.jupyter.entrypoints: websecure
+      traefik.http.routers.jupyter.tls: "true"
+      traefik.http.services.jupyter.loadbalancer.server.port: "8000"
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+      polaris:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+
   traefik:
     container_name: lakehouse-traefik
     <<: *service-defaults
     image: traefik:v3.7.1
+    networks:
+      lakehouse:
+        aliases: [authentik.lakehouse.local]
     security_opt:
       - no-new-privileges:true
     volumes:
@@ -593,13 +712,7 @@ services:
       timeout: 5s
       retries: 12
     depends_on:
-      airflow-api:
-        condition: service_healthy
-      ranger-admin:
-        condition: service_healthy
-      superset:
-        condition: service_healthy
-      cube:
+      authentik-server:
         condition: service_healthy
     deploy:
       resources:
@@ -620,3 +733,5 @@ volumes:
   garage_meta:
   garage_data:
   airflow_logs:
+  jupyterhub_data:
+  jupyterhub_home:

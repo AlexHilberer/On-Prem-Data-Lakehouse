@@ -8,15 +8,19 @@ sequenceDiagram
   participant Panel as Control Panel
   participant Airflow
   participant LDAP as OpenLDAP
+  participant IdP as authentik
   participant Ranger as Apache Ranger
   participant Trino
   participant Data as Polaris + Garage
 
-  User->>Panel: Credentials over localhost
-  Panel->>Airflow: Request API token
-  Airflow->>LDAP: Authenticate over LDAPS
-  LDAP-->>Airflow: Identity and group membership
-  Airflow-->>Panel: User-scoped JWT
+  User->>Panel: Open local operator UI
+  Panel->>Airflow: Request API token as svc_control
+  Airflow-->>Panel: JWT for the local system user
+  User->>Airflow: Browser login
+  Airflow->>IdP: OIDC authorization code flow
+  IdP->>LDAP: Authenticate over LDAPS
+  LDAP-->>IdP: Identity and group membership
+  IdP-->>Airflow: ID token with groups
   User->>Trino: JDBC query over native TLS
   Trino->>LDAP: Authenticate identity over LDAPS
   Trino->>Ranger: Authorize resources and action
@@ -27,15 +31,35 @@ sequenceDiagram
 
 ## Identity
 
-OpenLDAP is authoritative for human users and group membership. Airflow,
-Superset, Ranger, and Trino authenticate against LDAP. Application metadata
-databases may cache user records but do not define independent human passwords.
+OpenLDAP is authoritative for human users and group membership. authentik is the
+OIDC identity provider: it syncs users and the `lakehouse_*` groups from OpenLDAP
+through the read-only `svc_authentik` bind account and issues access tokens with
+`preferred_username` and `groups` claims. Humans sign in through authentik to
+JupyterHub, Airflow, Superset, and the Trino web UI, and Polaris accepts only
+authentik tokens. Application metadata databases may cache user records but do
+not define independent human passwords.
 
-The localhost-only control panel obtains an Airflow token with the configured
-engineer LDAP identity and keeps only the JWT in Streamlit session state.
+Machines use dedicated system identities instead of a human account:
 
-Non-human PostgreSQL roles, Garage access keys, Polaris credentials, and the
-`svc_cube` LDAP account are service identities generated into `.env`.
+| Identity | Used by | Where it is enforced |
+| --- | --- | --- |
+| `svc_pipeline` (authentik service account, group `lakehouse_pipeline`) | Airflow's Spark job | Polaris principal role `pipeline` (write) |
+| `svc_trino` (group `lakehouse_trino`) | Trino's Polaris catalog | Polaris principal role `trino` (read-only) |
+| `svc_polaris_admin` (group `lakehouse_service_admin`) | Bootstrap | Polaris `service_admin` |
+| `svc_control` (local Airflow user, role Op) | Control panel and `trigger-pipeline.sh` | Airflow |
+| `svc_cube` (LDAP account) | Cube to Trino | Trino LDAP password and Ranger |
+
+The authentik service accounts authenticate with the OAuth `client_credentials`
+grant on the `lakehouse` provider; the client secret is
+`base64("<user>:<app password>")`, which authentik accepts for service accounts.
+Airflow's token endpoint accepts only local users when the UI uses OIDC, which is
+why `svc_control` is a local user. The control panel keeps only the Airflow JWT in
+Streamlit session state.
+
+Accepted exceptions: Ranger Admin and usersync stay on LDAP, Cube reaches Trino
+with the `svc_cube` LDAP password because its driver cannot do OAuth2, and the
+Spark UI, the loopback control panel, and Garage have no OIDC. Non-human
+PostgreSQL roles and Garage access keys are generated into `.env`.
 
 ## Policy Model
 
@@ -58,7 +82,7 @@ additional lakehouse data access.
 
 ## Semantic-Layer Boundary
 
-Superset authenticates users through LDAP, but its PostgreSQL-compatible
+Superset authenticates users through authentik, but its PostgreSQL-compatible
 connection to Cube does not propagate the individual identity to Trino.
 Downstream queries therefore run as `svc_cube`, whose Ranger policy is limited
 to curated gold data.
@@ -91,8 +115,27 @@ service-owned configuration and truststores are also ignored.
 ## Enforcement Boundaries
 
 Polaris and Garage have no supported Ranger enforcement plugin in this design.
-They remain internal and accept engine service credentials only. Direct human
-access to Spark, Polaris, Garage, and platform metadata databases is outside the
-supported access path.
+They remain internal. Polaris runs in `external` authentication mode: its internal
+token endpoint is disabled (HTTP 501), so the shared `root` client credential no
+longer works and every caller needs an authentik token whose principal exists in
+Polaris. Authentik groups `lakehouse_<role>` map to Polaris principal roles
+`<role>`; the platform engines use the machine identities above.
+The first bootstrap of a stack runs once in `mixed` mode (see
+`auth-mixed.properties`) so `root` can create the machine principals.
+Analysts may read only the `gold` namespace; engineers manage all content.
+Notebook Spark sessions authenticate to Polaris with the user's token, so
+Polaris enforces catalog access per user.
+
+Limits of that enforcement:
+
+- Garage has no STS, so Polaris cannot vend per-user storage credentials. Notebook
+  kernels receive the shared Garage keys, and a user who knows them can read
+  table files directly.
+- Ranger column masks apply only in Trino. A Spark session reads unmasked columns
+  in any table its Polaris role may read.
+- Trino reaches Polaris with the shared credential, so Ranger alone authorizes
+  Trino queries.
+- The hub token broker holds the OIDC client secret and every user's refresh token,
+  and users are not hub admins so a kernel cannot read another user's token.
 
 Ranger audit events are retained in container logs through Log4j.

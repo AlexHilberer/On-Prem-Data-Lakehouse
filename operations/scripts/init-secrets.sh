@@ -50,15 +50,14 @@ organize_env() {
 
     printf '\n# Database credentials\n'
     write_env_group POSTGRES_ADMIN_PASSWORD AIRFLOW_DB_PASSWORD RANGER_DB_PASSWORD \
-      POLARIS_DB_PASSWORD SUPERSET_DB_PASSWORD SOURCE_DB_PASSWORD
+      POLARIS_DB_PASSWORD SUPERSET_DB_PASSWORD SOURCE_DB_PASSWORD AUTHENTIK_DB_PASSWORD
 
     printf '\n# LDAP identities\n'
     write_env_group LDAP_ADMIN_PASSWORD LDAP_CONFIG_PASSWORD LDAP_ANALYST_USERNAME \
-      LDAP_ANALYST_PASSWORD LDAP_ENGINEER_USERNAME LDAP_ENGINEER_PASSWORD CUBE_LDAP_PASSWORD
+      LDAP_ANALYST_PASSWORD LDAP_ENGINEER_USERNAME LDAP_ENGINEER_PASSWORD CUBE_LDAP_PASSWORD LDAP_AUTHENTIK_PASSWORD
 
     printf '\n# Ranger and Polaris\n'
-    write_env_group RANGER_ADMIN_PASSWORD POLARIS_ROOT_PASSWORD POLARIS_SPARK_CLIENT_ID \
-      POLARIS_SPARK_CLIENT_SECRET POLARIS_TRINO_CLIENT_ID POLARIS_TRINO_CLIENT_SECRET
+    write_env_group RANGER_ADMIN_PASSWORD POLARIS_ROOT_PASSWORD
 
     printf '\n# Garage object storage\n'
     write_env_group GARAGE_ACCESS_KEY GARAGE_SECRET_KEY GARAGE_RPC_SECRET GARAGE_ADMIN_TOKEN \
@@ -66,13 +65,15 @@ organize_env() {
 
     printf '\n# Application secrets\n'
     write_env_group CUBE_API_SECRET CUBE_SQL_PASSWORD AIRFLOW_SECRET_KEY SUPERSET_SECRET_KEY \
-      TRINO_SHARED_SECRET
+      TRINO_SHARED_SECRET AUTHENTIK_SECRET_KEY AUTHENTIK_BOOTSTRAP_PASSWORD OIDC_CLIENT_SECRET JUPYTERHUB_CRYPT_KEY \
+      SVC_PIPELINE_TOKEN SVC_TRINO_TOKEN SVC_POLARIS_ADMIN_TOKEN OIDC_PIPELINE_CLIENT_SECRET \
+      OIDC_TRINO_CLIENT_SECRET OIDC_POLARIS_ADMIN_CLIENT_SECRET AIRFLOW_SERVICE_PASSWORD
 
     while IFS= read -r line; do
       case "${line%%=*}" in
         '# Compose runtime'|'# Database credentials'|'# LDAP identities'|'# Ranger and Polaris'|'# Garage object storage'|'# Application secrets')
           ;;
-        COMPOSE_PROJECT_NAME|LAKEHOUSE_DOMAIN|AIRFLOW_UID|LAKEHOUSE_TIMEZONE|POSTGRES_ADMIN_PASSWORD|AIRFLOW_DB_PASSWORD|RANGER_DB_PASSWORD|POLARIS_DB_PASSWORD|SUPERSET_DB_PASSWORD|SOURCE_DB_PASSWORD|LDAP_ADMIN_PASSWORD|LDAP_CONFIG_PASSWORD|LDAP_ANALYST_USERNAME|LDAP_ANALYST_PASSWORD|LDAP_ENGINEER_USERNAME|LDAP_ENGINEER_PASSWORD|CUBE_LDAP_PASSWORD|RANGER_ADMIN_PASSWORD|POLARIS_ROOT_PASSWORD|POLARIS_SPARK_CLIENT_ID|POLARIS_SPARK_CLIENT_SECRET|POLARIS_TRINO_CLIENT_ID|POLARIS_TRINO_CLIENT_SECRET|GARAGE_ACCESS_KEY|GARAGE_SECRET_KEY|GARAGE_RPC_SECRET|GARAGE_ADMIN_TOKEN|GARAGE_METRICS_TOKEN|CUBE_API_SECRET|CUBE_SQL_PASSWORD|AIRFLOW_SECRET_KEY|SUPERSET_SECRET_KEY|TRINO_SHARED_SECRET)
+        COMPOSE_PROJECT_NAME|LAKEHOUSE_DOMAIN|AIRFLOW_UID|LAKEHOUSE_TIMEZONE|POSTGRES_ADMIN_PASSWORD|AIRFLOW_DB_PASSWORD|RANGER_DB_PASSWORD|POLARIS_DB_PASSWORD|SUPERSET_DB_PASSWORD|SOURCE_DB_PASSWORD|AUTHENTIK_DB_PASSWORD|LDAP_ADMIN_PASSWORD|LDAP_CONFIG_PASSWORD|LDAP_ANALYST_USERNAME|LDAP_ANALYST_PASSWORD|LDAP_ENGINEER_USERNAME|LDAP_ENGINEER_PASSWORD|CUBE_LDAP_PASSWORD|LDAP_AUTHENTIK_PASSWORD|RANGER_ADMIN_PASSWORD|POLARIS_ROOT_PASSWORD|GARAGE_ACCESS_KEY|GARAGE_SECRET_KEY|GARAGE_RPC_SECRET|GARAGE_ADMIN_TOKEN|GARAGE_METRICS_TOKEN|CUBE_API_SECRET|CUBE_SQL_PASSWORD|AIRFLOW_SECRET_KEY|SUPERSET_SECRET_KEY|TRINO_SHARED_SECRET|AUTHENTIK_SECRET_KEY|AUTHENTIK_BOOTSTRAP_PASSWORD|OIDC_CLIENT_SECRET|JUPYTERHUB_CRYPT_KEY|SVC_PIPELINE_TOKEN|SVC_TRINO_TOKEN|SVC_POLARIS_ADMIN_TOKEN|OIDC_PIPELINE_CLIENT_SECRET|OIDC_TRINO_CLIENT_SECRET|OIDC_POLARIS_ADMIN_CLIENT_SECRET|AIRFLOW_SERVICE_PASSWORD)
           ;;
         '')
           ;;
@@ -103,17 +104,15 @@ ensure_env_value RANGER_DB_PASSWORD "$(random_hex)"
 ensure_env_value POLARIS_DB_PASSWORD "$(random_hex)"
 ensure_env_value SUPERSET_DB_PASSWORD "$(random_hex)"
 ensure_env_value SOURCE_DB_PASSWORD "$(random_hex)"
+ensure_env_value AUTHENTIK_DB_PASSWORD "$(random_hex)"
 ensure_env_value LDAP_ADMIN_PASSWORD "$(random_hex)"
 ensure_env_value LDAP_CONFIG_PASSWORD "$(random_hex)"
 ensure_env_value LDAP_ANALYST_PASSWORD "$(random_hex 12)"
 ensure_env_value LDAP_ENGINEER_PASSWORD "$(random_hex 12)"
 ensure_env_value CUBE_LDAP_PASSWORD "$(random_hex)"
+ensure_env_value LDAP_AUTHENTIK_PASSWORD "$(random_hex)"
 ensure_env_value RANGER_ADMIN_PASSWORD "$(random_ranger_password)"
 ensure_env_value POLARIS_ROOT_PASSWORD "$(random_hex)"
-ensure_env_value POLARIS_SPARK_CLIENT_ID root
-ensure_env_value POLARIS_SPARK_CLIENT_SECRET '${POLARIS_ROOT_PASSWORD}'
-ensure_env_value POLARIS_TRINO_CLIENT_ID root
-ensure_env_value POLARIS_TRINO_CLIENT_SECRET '${POLARIS_ROOT_PASSWORD}'
 ensure_env_value GARAGE_ACCESS_KEY "GK$(random_hex 16)"
 ensure_env_value GARAGE_SECRET_KEY "$(random_hex 32)"
 ensure_env_value GARAGE_RPC_SECRET "$(random_hex 32)"
@@ -124,6 +123,22 @@ ensure_env_value CUBE_SQL_PASSWORD "$(random_hex)"
 ensure_env_value AIRFLOW_SECRET_KEY "$(random_hex 32)"
 ensure_env_value SUPERSET_SECRET_KEY "$(random_hex 32)"
 ensure_env_value TRINO_SHARED_SECRET "$(random_hex 64)"
+ensure_env_value AUTHENTIK_SECRET_KEY "$(random_hex 32)"
+ensure_env_value AUTHENTIK_BOOTSTRAP_PASSWORD "$(random_hex 12)"
+ensure_env_value OIDC_CLIENT_SECRET "$(random_hex 32)"
+ensure_env_value JUPYTERHUB_CRYPT_KEY "$(random_hex 32)"
+ensure_env_value SVC_PIPELINE_TOKEN "$(random_hex 32)"
+ensure_env_value SVC_TRINO_TOKEN "$(random_hex 32)"
+ensure_env_value SVC_POLARIS_ADMIN_TOKEN "$(random_hex 32)"
+# authentik accepts base64("user:app-password") as a service account's client secret.
+set_env_value() {
+  if grep -q "^${1}=" .env; then sed -i "s|^${1}=.*|${1}=${2}|" .env; else printf '%s=%s\n' "$1" "$2" >> .env; fi
+}
+for machine in PIPELINE:svc_pipeline TRINO:svc_trino POLARIS_ADMIN:svc_polaris_admin; do
+  set_env_value "OIDC_${machine%%:*}_CLIENT_SECRET" \
+    "$(printf '%s:%s' "${machine##*:}" "$(env_value "SVC_${machine%%:*}_TOKEN")" | base64 | tr -d '\n')"
+done
+ensure_env_value AIRFLOW_SERVICE_PASSWORD "$(random_hex 24)"
 
 analyst_username="$(env_value LDAP_ANALYST_USERNAME)"
 engineer_username="$(env_value LDAP_ENGINEER_USERNAME)"
@@ -158,7 +173,17 @@ set +a
 if [[ ! -f platform/config/pki/ca.key ]]; then
   openssl req -x509 -newkey rsa:4096 -nodes -days 1825 \
     -keyout platform/config/pki/ca.key -out platform/config/pki/ca.crt \
-    -subj "/CN=On-Prem Lakehouse Local CA"
+    -subj "/CN=On-Prem Lakehouse Local CA" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign"
+elif ! openssl x509 -in platform/config/pki/ca.crt -noout -ext keyUsage 2>/dev/null | grep -q keyCertSign; then
+  # Python 3.13 clients reject a CA without keyUsage; the key is kept so leaf certificates stay valid.
+  cp platform/config/pki/ca.crt platform/config/pki/ca.crt.bak
+  openssl req -x509 -new -key platform/config/pki/ca.key -days 1825 \
+    -subj "/CN=On-Prem Lakehouse Local CA" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -out platform/config/pki/ca.crt
 fi
 
 issue_certificate() {
@@ -189,8 +214,14 @@ EOF
 
 issue_certificate ldap openldap "DNS:openldap,DNS:ldap.lakehouse.local"
 issue_certificate trino trino "DNS:trino,DNS:trino.lakehouse.local,IP:127.0.0.1"
+# Reissue a gateway certificate created before a hostname was added.
+if [[ -f platform/config/pki/gateway.crt ]] &&
+  ! openssl x509 -in platform/config/pki/gateway.crt -noout -ext subjectAltName |
+    grep -q jupyter.lakehouse.local; then
+  rm -f platform/config/pki/gateway.crt platform/config/pki/gateway.key
+fi
 issue_certificate gateway lakehouse.local \
-  "DNS:airflow.lakehouse.local,DNS:ranger.lakehouse.local,DNS:superset.lakehouse.local,DNS:cube.lakehouse.local"
+  "DNS:airflow.lakehouse.local,DNS:ranger.lakehouse.local,DNS:superset.lakehouse.local,DNS:cube.lakehouse.local,DNS:authentik.lakehouse.local,DNS:jupyter.lakehouse.local"
 cat platform/config/pki/trino.key platform/config/pki/trino.crt > platform/config/pki/trino.pem
 chmod 600 platform/config/pki/*.key platform/config/pki/trino.pem
 
@@ -228,3 +259,4 @@ chmod 600 platform/config/trino/dbeaver-trino-truststore.p12
 printf 'Initialized secrets, service configuration, and certificates from .env.\n'
 printf 'LDAP analyst: %s (LDAP_ANALYST_PASSWORD)\n' "${LDAP_ANALYST_USERNAME}"
 printf 'LDAP engineer: %s (LDAP_ENGINEER_PASSWORD)\n' "${LDAP_ENGINEER_USERNAME}"
+printf 'authentik admin: akadmin (AUTHENTIK_BOOTSTRAP_PASSWORD)\n'

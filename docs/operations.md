@@ -11,6 +11,7 @@ Add the application hostnames to `/etc/hosts`:
 ```text
 127.0.0.1 airflow.lakehouse.local ranger.lakehouse.local
 127.0.0.1 superset.lakehouse.local cube.lakehouse.local
+127.0.0.1 authentik.lakehouse.local jupyter.lakehouse.local
 ```
 
 ## Lifecycle
@@ -31,15 +32,17 @@ Add the application hostnames to `/etc/hosts`:
 
 | Interface | Endpoint | Exposure | Authentication |
 | --- | --- | --- | --- |
-| Control panel | `http://127.0.0.1:8501` | Direct loopback | No user login; internal engineer token |
-| Airflow | `http://127.0.0.1:8080` | Direct loopback | LDAP |
-| Airflow | `https://airflow.lakehouse.local` | Traefik HTTPS | LDAP |
+| Control panel | `http://127.0.0.1:8501` | Direct loopback | No user login; internal `svc_control` token |
+| authentik | `https://authentik.lakehouse.local` | Traefik HTTPS | LDAP-backed users; `akadmin` for administration |
+| JupyterHub | `https://jupyter.lakehouse.local` (login) or `http://127.0.0.1:8000` | Traefik HTTPS or loopback | authentik OIDC |
+| Airflow | `http://127.0.0.1:8080` | Direct loopback | authentik OIDC (API: local `svc_control`) |
+| Airflow | `https://airflow.lakehouse.local` | Traefik HTTPS | authentik OIDC |
 | Spark master | `http://127.0.0.1:8081` | Direct loopback | None; local operational UI |
 | Ranger | `http://127.0.0.1:6080` or `https://ranger.lakehouse.local` | Loopback or Traefik HTTPS | LDAP-synchronized users |
-| Superset | `http://127.0.0.1:8088` | Direct loopback | LDAP |
-| Superset | `https://superset.lakehouse.local` | Traefik HTTPS | LDAP |
+| Superset | `http://127.0.0.1:8088` | Direct loopback | authentik OIDC |
+| Superset | `https://superset.lakehouse.local` | Traefik HTTPS | authentik OIDC |
 | Cube | `https://cube.lakehouse.local` | Traefik HTTPS | API authentication |
-| Trino | `https://127.0.0.1:8443` | Native TLS over loopback | LDAP plus Ranger |
+| Trino | `https://127.0.0.1:8443` | Native TLS over loopback | authentik OIDC (UI, bearer token) or LDAP password for DBeaver and Cube, plus Ranger |
 | PostgreSQL | `127.0.0.1:5432` | Direct loopback | Generated database roles |
 | OpenLDAP | `ldaps://127.0.0.1:636` | Direct loopback | LDAP bind |
 

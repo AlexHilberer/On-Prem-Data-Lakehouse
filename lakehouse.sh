@@ -49,9 +49,28 @@ initialize() {
   ./operations/scripts/init-secrets.sh
 }
 
+run_bootstrap() {
+  docker compose exec -T airflow-api /opt/airflow/bootstrap/bootstrap-platform.sh
+}
+
 bootstrap() {
-  docker compose exec -T airflow-api \
-    /opt/airflow/bootstrap/bootstrap-platform.sh
+  local status=0
+  run_bootstrap || status=$?
+  if (( status == 75 )); then
+    # Workaround: machine principals do not exist yet, so Polaris accepts the root credential once. See CLAUDE.md#pitfalls
+    printf 'Creating Polaris machine principals in a one-time mixed-mode window...\n'
+    # The trap closes the mixed window even when a step inside it fails.
+    trap 'docker compose up -d --force-recreate polaris >/dev/null' EXIT
+    POLARIS_AUTHENTICATION_TYPE=mixed docker compose up -d --force-recreate polaris
+    ./operations/scripts/wait-for-platform.sh polaris
+    run_bootstrap
+    trap - EXIT
+    docker compose up -d --force-recreate polaris
+    ./operations/scripts/wait-for-platform.sh polaris
+    run_bootstrap
+  elif (( status != 0 )); then
+    return "${status}"
+  fi
 }
 
 start_platform() {
@@ -60,9 +79,9 @@ start_platform() {
 
   printf 'Starting core platform services...\n'
   docker compose up -d --remove-orphans \
-    postgres redis openldap garage ranger-admin ranger-usersync polaris airflow-api
+    postgres redis openldap garage ranger-admin ranger-usersync authentik-server authentik-worker traefik polaris airflow-api
   ./operations/scripts/wait-for-platform.sh \
-    postgres redis openldap garage ranger-admin ranger-usersync polaris airflow-api
+    postgres redis openldap garage ranger-admin ranger-usersync authentik-server authentik-worker traefik polaris airflow-api
 
   printf 'Applying platform configuration...\n'
   bootstrap

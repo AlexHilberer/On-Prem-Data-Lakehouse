@@ -13,8 +13,8 @@ seed="${SEED:-42}"
 run_id="manual-$(date -u +%Y%m%dT%H%M%SZ)"
 payload="$(printf '{"dag_run_id":"%s","logical_date":null,"conf":{"rows":%s,"seed":%s}}' "$run_id" "$rows" "$seed")"
 auth_payload="$(jq -nc \
-  --arg username "${LDAP_ENGINEER_USERNAME}" \
-  --arg password "${LDAP_ENGINEER_PASSWORD}" \
+  --arg username "svc_control" \
+  --arg password "${AIRFLOW_SERVICE_PASSWORD}" \
   '{username: $username, password: $password}')"
 token="$(curl --fail --silent --show-error \
   --cacert platform/config/pki/ca.crt \
