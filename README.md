@@ -316,6 +316,8 @@ Generated passwords live in the ignored `.env` file. Sign in as `alice.analyst` 
 | Control panel | http://127.0.0.1:8501 |
 | Spark master | http://127.0.0.1:8081 |
 
+> **Note:** the `*.lakehouse.local` addresses only resolve once local DNS is set up. Add the `/etc/hosts` entries from step 1 (or an equivalent local DNS record) pointing them at the machine running the stack. The `127.0.0.1` addresses work without it.
+
 DBeaver, backups, reset, and troubleshooting are in the [operations guide](docs/operations.md).
 
 ```bash
