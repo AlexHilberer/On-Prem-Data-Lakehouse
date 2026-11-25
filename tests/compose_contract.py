@@ -203,6 +203,10 @@ assert "spark-master" in services["jupyterhub"]["depends_on"]
 assert services["trino"]["hostname"] == "trino"
 assert services["openldap"]["environment"]["LDAP_ANALYST_USERNAME"]
 assert services["openldap"]["environment"]["LDAP_ENGINEER_USERNAME"]
+import re
+
+required_by_panel = set(re.findall(r'os\.environ\["([A-Z_]+)"\]', Path("control-panel/app.py").read_text()))
+assert required_by_panel <= set(services["control-panel"]["environment"]), required_by_panel
 assert services["control-panel"]["environment"]["AIRFLOW_SERVICE_USERNAME"] == "svc_control"
 assert services["control-panel"]["environment"]["AIRFLOW_SERVICE_PASSWORD"]
 
