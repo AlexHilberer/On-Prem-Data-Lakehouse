@@ -1,121 +1,114 @@
 # On-Premises Data Lakehouse
 
-Single-host Docker Compose lakehouse with LDAP identity, Ranger authorization,
-Spark processing, Iceberg tables, and governed analytics.
+**A fully self-hosted data lakehouse you can start with one command: Iceberg tables, single sign-on, governed access, and notebooks with Trino and Spark built in. It runs on one machine today and is shaped to grow onto several.**
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Validate infrastructure](https://github.com/ShollyWolly/OnPrem-Data-Lakehouse/actions/workflows/validate.yml/badge.svg)](https://github.com/ShollyWolly/OnPrem-Data-Lakehouse/actions/workflows/validate.yml)
+![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Apache Iceberg](https://img.shields.io/badge/Apache-Iceberg-1E88E5)
+![Apache Spark](https://img.shields.io/badge/Apache-Spark-E25A1C?logo=apachespark&logoColor=white)
+![Trino](https://img.shields.io/badge/Trino-481-DD00A1)
+
+![A notebook signed in as bob.engineer running %sql on Trino and a Spark session against Polaris](docs/images/notebook.png)
+
+*A JupyterLab notebook on the running stack. `%sql` runs on Trino and `spark_builder` is a pre-wired Spark session; both know who is signed in. Every screenshot on this page comes from the stack running locally on generated demo data.*
+
+## What it is
+
+Everything you would expect from a modern lakehouse, self-hosted and wired together so that it works out of the box:
+
+- **Open table format.** Apache Iceberg tables in a medallion layout (bronze, silver, gold), stored on Garage (S3-compatible) and cataloged by Apache Polaris.
+- **One identity everywhere.** Users live in OpenLDAP and sign in through authentik (OIDC) to JupyterHub, Airflow, Superset, and the Trino UI; Trino also accepts the same token from notebooks, and DBeaver can use an LDAP password. Machines get their own system identities instead of shared passwords.
+- **Governed access.** Ranger authorizes Trino with column masking, and Polaris authorizes Spark per identity at the catalog.
+- **Pipelines and analytics.** Airflow runs a deterministic retail pipeline on Spark. Cube and Superset serve three dashboards on the curated gold tables.
+- **Notebooks that are already connected.** `%sql` and a pre-configured `spark_builder` are available in every kernel, with no connection settings to copy around.
+- **Tested.** Static contracts and a live-stack integration suite that covers service health, LDAP, the SSO redirect, machine tokens, and Polaris refusing the root credential and invalid tokens.
+
+It is a lab-scale system you own end to end, not a managed product. The [limitations](#limitations) are stated plainly below.
+
+## See it working
+
+### Same notebook, two identities
+
+Alice (analyst) and Bob (engineer) run the identical notebook. The checks name the system that makes each decision.
+
+![The same permissions notebook run as alice.analyst and bob.engineer: masked emails and denials for Alice, full access for Bob](docs/images/permissions.png)
+
+| | `alice.analyst` | `bob.engineer` |
+| --- | --- | --- |
+| Customer emails in Trino | masked (`lo***@***`) | in clear |
+| Read `gold` tables | yes | yes |
+| Read `bronze` in Trino | denied by Ranger | yes |
+| Read `bronze` in Spark | denied by Polaris | yes |
+| Create a table in Spark | denied by Polaris | yes |
+
+### The platform
+
+| | |
+| --- | --- |
+| ![Airflow DAG runs](docs/images/airflow.png) | ![Superset dashboard](docs/images/superset.png) |
+| **Airflow.** The pipeline runs triggered by an engineer and by the `svc_control` system user. | **Superset.** A dashboard served through the Cube semantic layer. |
+| ![Trino queries](docs/images/trino.png) | ![Ranger policies](docs/images/ranger.png) |
+| **Trino.** Finished queries attributed to the signed-in user. | **Ranger.** The policies that govern Trino. |
+| ![Spark master](docs/images/spark.png) | ![authentik users](docs/images/authentik-users.png) |
+| **Spark.** A notebook session running on the cluster as `bob.engineer`. | **authentik.** People and the machine identities. |
+| ![authentik login](docs/images/authentik-login.jpg) | ![Control panel](docs/images/control-panel.png) |
+| **Single sign-on.** One login page in front of every application. | **Control panel.** A small local UI to trigger and watch pipeline runs. |
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-  subgraph Access["User Access"]
-    Analyst["LDAP Analyst"]
-    Engineer["LDAP Engineer"]
-    DBeaver["DBeaver"]
-    Traefik["Traefik<br/>HTTPS Gateway"]
+flowchart TB
+  User(["Browser / DBeaver"])
+
+  subgraph Edge["Edge"]
+    Traefik["Traefik<br/>HTTPS with a local CA"]
   end
 
-  subgraph Identity["Identity & Authorization"]
-    LDAP["OpenLDAP"]
-    UserSync["Ranger UserSync"]
-    Ranger["Ranger Admin"]
+  subgraph Identity["Identity"]
+    LDAP["OpenLDAP<br/>users and groups"]
+    Authentik["authentik<br/>OIDC provider"]
   end
 
-  subgraph Orchestration["Orchestration & Processing"]
-    Airflow["Airflow 3<br/>API · Scheduler · DAG Processor"]
-    Queue["Redis<br/>Task Queue"]
-    Worker["Airflow<br/>Celery Worker"]
-    Control["Streamlit<br/>Control Panel"]
-    Generator["Python Data Generator"]
-    Spark["Spark<br/>Master + Worker"]
+  subgraph Apps["Applications"]
+    Jupyter["JupyterHub<br/>notebooks"]
+    Airflow["Airflow<br/>orchestration"]
+    Superset["Superset<br/>dashboards"]
+    Cube["Cube<br/>semantic layer"]
+    Panel["Control panel"]
   end
 
-  subgraph Lakehouse["Lakehouse Core"]
-    Source[("PostgreSQL<br/>Source Data")]
-    Polaris["Apache Polaris<br/>Iceberg REST Catalog"]
-    Garage[("Garage<br/>S3 Object Storage")]
-    Metadata[("PostgreSQL<br/>Platform Metadata")]
+  subgraph Compute["Compute and governance"]
+    Spark["Spark<br/>master + worker"]
+    Trino["Trino<br/>SQL engine"]
+    Ranger["Ranger<br/>policies and masking"]
   end
 
-  subgraph Analytics["Query & Analytics"]
-    Trino["Trino"]
-    Cube["Cube Core"]
-    Superset["Apache Superset"]
+  subgraph Data["Catalog and storage"]
+    Polaris["Polaris<br/>Iceberg REST catalog"]
+    Garage["Garage<br/>S3 object storage"]
+    Postgres[("PostgreSQL<br/>source and metadata")]
   end
 
-  Analyst & Engineer -->|Named HTTPS routes| Traefik
-  Traefik --> Airflow
-  Traefik --> Ranger
-  Traefik --> Cube
-  Traefik --> Superset
-  Analyst & Engineer --> LDAP
-  Analyst & Engineer -->|Localhost :8501| Control
-  DBeaver -->|Native TLS :8443| Trino
-  Control --> Airflow
-  LDAP --> UserSync --> Ranger
-  Airflow --> Queue --> Worker
-  Worker --> Generator --> Source
-  Worker --> Spark
-  Spark --> Source
-  Spark --> Polaris
-  Spark --> Garage
-  Polaris --> Metadata
-  Trino --> Ranger
-  Trino --> Polaris
-  Trino --> Garage
+  User --> Traefik
+  Traefik --> Jupyter & Airflow & Superset & Authentik & Cube & Ranger
+  User -->|"JDBC and UI :8443"| Trino
+  LDAP --> Authentik
+  LDAP -->|"JDBC login"| Trino
+  Authentik -. OIDC .-> Jupyter & Airflow & Superset & Trino & Polaris
+  Panel --> Airflow --> Spark
+  Jupyter --> Spark & Trino
   Superset --> Cube --> Trino
+  Ranger -. authorizes .-> Trino
+  Spark & Trino --> Polaris
+  Polaris --> Garage
+  Spark & Trino --> Garage
+  Postgres --- Polaris & Airflow & Authentik & Superset & Ranger
 ```
 
-All data transformations run in Spark. Trino remains query-only, Polaris owns
-Iceberg catalog metadata, Garage stores table objects, and Ranger governs the
-supported human query path.
+Services run as single-replica containers on one Docker network, behind Traefik for browser routes. Detailed topology, ports, and per-service responsibilities are in [architecture](docs/architecture.md).
 
-## Container Responsibilities
-
-Airflow task execution is separated from scheduling:
-
-```text
-Airflow Scheduler -> Redis queue -> Airflow Worker -> Spark Master -> Spark Worker
-```
-
-Redis is an internal-only, transient Celery broker. It has no host port or web
-interface; PostgreSQL remains authoritative for Airflow metadata and completed
-task results.
-
-| Container | Responsibility |
-| --- | --- |
-| `lakehouse-postgres` | Hosts retail source data and the Airflow, Ranger, Polaris, and Superset metadata databases. |
-| `lakehouse-redis` | Holds queued Airflow tasks until the Celery worker accepts them. |
-| `lakehouse-openldap` | Provides identities for analysts, engineers, and service accounts. |
-| `lakehouse-authentik-server`, `lakehouse-authentik-worker` | OIDC identity provider that reads users and groups from OpenLDAP. |
-| `lakehouse-jupyterhub` | Notebook environment; kernels run Spark and Trino as the logged-in user. |
-| `lakehouse-ranger-admin` | Manages Trino authorization and column-masking policies. |
-| `lakehouse-ranger-usersync` | Synchronizes LDAP users and groups into Ranger. |
-| `lakehouse-garage` | Stores Iceberg table objects through an S3-compatible API. |
-| `lakehouse-polaris` | Tracks Iceberg catalogs, schemas, tables, and snapshots. |
-| `lakehouse-spark-master` | Coordinates Spark applications and provides the Spark UI. |
-| `lakehouse-spark-worker` | Executes bronze, silver, gold, and quality-check transformations. |
-| `lakehouse-airflow-api` | Provides the Airflow UI, REST API, authentication, and task execution API. |
-| `lakehouse-airflow-scheduler` | Determines which tasks are ready and queues them through Redis. |
-| `lakehouse-airflow-dag-processor` | Parses and serializes Airflow DAG definitions. |
-| `lakehouse-airflow-worker` | Runs Python tasks and hosts the client-mode driver for submitted Spark applications. |
-| `lakehouse-control-panel` | Provides the local Streamlit interface for triggering and monitoring pipelines. |
-| `lakehouse-trino` | Executes governed interactive SQL over Iceberg tables. |
-| `lakehouse-cube` | Defines semantic measures and dimensions over curated gold data. |
-| `lakehouse-superset` | Provides dashboards and queries the lakehouse through Cube. |
-| `lakehouse-traefik` | Terminates HTTPS and routes named browser endpoints. |
-
-## Tracked Configuration
-
-The stack does not rely on mutable configuration hidden inside containers.
-Airflow, Spark, Redis, PostgreSQL, Polaris, Streamlit, Trino, Traefik, and
-Superset consume read-only files from `platform/config`; Cube consumes its
-tracked configuration from `analytics/cube`. Secrets and container-specific
-connection values remain in the ignored `.env` file.
-
-The [configuration inventory](platform/config/README.md) lists every mounted
-file, its container path, and how to update vendor-default snapshots safely.
-
-## Data Journey
+### Data journey
 
 ```mermaid
 flowchart LR
@@ -163,87 +156,204 @@ flowchart LR
   Quality -->|Fail| Airflow["Airflow task failure"]
 ```
 
-Batch identifiers make retries idempotent. The first automatic run creates two
-years of realistic commerce history; later runs append non-overlapping 30-day
-periods. Spark validates all three curated gold models before Cube exposes
-them.
+Batch identifiers make retries idempotent. The first automatic run creates two years of commerce history; later runs append non-overlapping 30-day periods. Spark validates all three gold models before Cube exposes them.
 
-## Start
+## Identity and access
 
-### Requirements
+Humans sign in once through authentik, which reads users and groups from OpenLDAP. Applications receive a token that carries the username and the groups.
 
-- Linux `amd64`
-- Docker Engine with Compose v2
-- 16 GiB RAM minimum; 24 GiB recommended
-- Approximately 30 GiB free disk for source builds, images, and data
-- `openssl`, `keytool`, `curl`, `jq`, and Python 3
+```mermaid
+sequenceDiagram
+  actor U as User
+  participant App as Jupyter / Airflow / Superset / Trino UI
+  participant IdP as authentik
+  participant LDAP as OpenLDAP
 
-Add the local application names:
-
-```text
-127.0.0.1 airflow.lakehouse.local ranger.lakehouse.local
-127.0.0.1 superset.lakehouse.local cube.lakehouse.local
-127.0.0.1 authentik.lakehouse.local jupyter.lakehouse.local
+  U->>App: Open the application
+  App-->>U: Redirect to authentik
+  U->>IdP: Username and password
+  IdP->>LDAP: Verify over LDAPS and read groups
+  LDAP-->>IdP: Identity and group membership
+  IdP-->>U: Authorization code
+  U->>App: Code
+  App->>IdP: Exchange the code
+  IdP-->>App: Token with username and groups
+  App-->>U: Signed in, roles mapped from groups
 ```
 
-Start the complete platform:
+In a notebook the same token reaches both engines:
 
-```bash
-./lakehouse.sh up
+```mermaid
+sequenceDiagram
+  participant K as Notebook kernel
+  participant B as Token broker
+  participant IdP as authentik
+  participant T as Trino
+  participant R as Ranger
+  participant S as Spark
+  participant P as Polaris
+
+  K->>B: get_token()
+  B->>IdP: Refresh (the client secret stays in the hub)
+  IdP-->>B: Fresh access token
+  B-->>K: Access token
+  K->>T: %sql with the user's token
+  T->>R: Authorize as the user, apply masking
+  T->>P: Read tables through the Trino system identity
+  K->>S: spark_builder.getOrCreate()
+  S->>P: Catalog calls with the user's token
+  P-->>S: Allow, or 403 by principal role
 ```
 
-Trust `platform/config/pki/ca.crt` in the browser or operating-system trust
-store. LDAP usernames and passwords are stored in the ignored `.env` file.
+Machines never share a human account. Airflow's Spark job, Trino's catalog connection, and the bootstrap each authenticate with their own authentik service account (`svc_pipeline`, `svc_trino`, `svc_polaris_admin`), and the control panel uses a local Airflow system user (`svc_control`). Polaris runs in external-authentication mode, so it accepts only authentik tokens and refuses any shared credential.
 
-| Service | Endpoint |
+### Who enforces what
+
+| Entry point | Identity the platform sees | Enforced by |
+| --- | --- | --- |
+| Trino (`%sql`, DBeaver, UI) | the signed-in user | **Ranger**: table and column policies, email masking |
+| Spark in a notebook | the signed-in user, carried to Polaris | **Polaris**: principal roles at the catalog level |
+| Airflow pipeline | `svc_pipeline` | Polaris role `pipeline` (write) |
+| Trino to the catalog | `svc_trino` | Polaris role `trino` (read-only) |
+| Superset and Cube | `svc_cube` | Ranger, limited to the gold tables |
+| Garage (object files) | shared storage keys | not enforced, see [limitations](#limitations) |
+
+## Notebooks
+
+Every kernel starts with the platform already connected.
+
+```python
+# Trino, as you
+%sql select category, round(sum(revenue)) as revenue from lakehouse.gold.sales_performance group by 1 order by 2 desc
+
+# Spark, as you
+spark = spark_builder.getOrCreate()
+spark.sql("select * from lakehouse.gold.customer_360 limit 5").show()
+```
+
+`%sql` returns a pandas DataFrame. `spark_builder` accepts `appName` and `config` before `getOrCreate()`. Tokens refresh automatically through a small service in the hub, so the OIDC client secret never reaches a kernel.
+
+## Limitations
+
+This is a self-hosted lab system and it is honest about where it stops.
+
+- **Spark does not carry the OIDC context into storage.** Spark reads data files from Garage with shared storage keys, so a user's identity does not travel past the catalog. Access is enforced at the catalog: Polaris decides, per identity, which tables a notebook may list, read, or create. Garage has no per-user enforcement, and anyone holding the storage keys could read files directly. The design assumes people reach data through the catalog.
+- **Masking is a Trino feature.** Ranger's column masks apply to Trino only. A Spark session reads unmasked columns in any table its Polaris role allows.
+- **Some components stay on LDAP or have no login.** Ranger Admin and its user sync use LDAP, Cube reaches Trino with one system account, and the Spark and control-panel UIs are bound to the loopback interface without a login.
+- **Demo-sized.** One replica per service and a two-core Spark worker, so one notebook Spark session at a time uses the whole cluster. A notebook Spark session keeps the token it started with (eight hours), then needs recreating.
+- **Lab security posture.** A local CA, generated secrets in an ignored `.env`, and plain HTTP on loopback ports. Fine for a lab, not a hardened deployment.
+
+## Scaling to multiple machines
+
+The stack starts on one host, but its pieces are the kind that scale out. The table describes where each one goes next. It is a design direction, not something that has been exercised here.
+
+```mermaid
+flowchart LR
+  subgraph A["Host A: control plane"]
+    Edge["Traefik"]
+    Id["authentik + OpenLDAP"]
+    Cat["Polaris, Airflow API and scheduler"]
+    Coord["Trino coordinator + Ranger"]
+  end
+
+  subgraph B["Hosts B to N: compute"]
+    SW["Spark workers"]
+    TW["Trino workers"]
+    AW["Airflow Celery workers"]
+  end
+
+  subgraph C["Storage hosts"]
+    G["Garage nodes<br/>replicated"]
+  end
+
+  subgraph D["Shared state"]
+    PG[("PostgreSQL, highly available")]
+    RD[("Redis")]
+  end
+
+  Coord --> TW
+  Cat --> SW & AW
+  SW & TW --> G
+  Cat --> PG
+  AW --> RD
+```
+
+| Component | Path to multiple machines |
 | --- | --- |
-| Control panel | `http://127.0.0.1:8501` |
-| authentik | `https://authentik.lakehouse.local` |
-| JupyterHub | `https://jupyter.lakehouse.local` |
-| Airflow | `http://127.0.0.1:8080` or `https://airflow.lakehouse.local` |
-| Spark | `http://127.0.0.1:8081` |
-| Ranger | `http://127.0.0.1:6080` or `https://ranger.lakehouse.local` |
-| Superset | `http://127.0.0.1:8088` or `https://superset.lakehouse.local` |
-| Cube | `https://cube.lakehouse.local` |
-| Trino | `https://127.0.0.1:8443` |
-| PostgreSQL source | `localhost:5432`, database `retail` |
-| OpenLDAP | `ldaps://localhost:636` |
+| Spark | Register more workers from other hosts with the same master |
+| Trino | Add worker nodes to the coordinator; internal TLS and the shared secret are already configured |
+| Garage | Grow into a multi-node cluster with replication across storage hosts |
+| Airflow | Add Celery workers; the Redis broker is already in place |
+| Polaris, Airflow API, authentik | Run replicas behind Traefik |
+| JupyterHub | Move its state database from SQLite to PostgreSQL before running more than one hub |
+| PostgreSQL, Redis | Move to a highly available or managed deployment |
+| Orchestration | Move from Compose to Swarm or Kubernetes when one host is no longer enough |
 
-### Access
+## Quick start
 
-| Pattern | Services | Purpose |
-| --- | --- | --- |
-| Traefik HTTPS | Airflow, Ranger, Superset, Cube | Friendly browser hostnames, shared TLS termination, and Docker-label discovery |
-| Direct localhost | Control panel, Airflow, Ranger, Spark, Superset, Trino | Immediate host-only operations and JDBC connectivity without publishing services to the LAN |
-
-## Identities
-
-| Identity | Platform role | Data access |
-| --- | --- | --- |
-| `LDAP_ANALYST_USERNAME` (`alice.analyst` by default) | Airflow Viewer, Superset Gamma | Read-only curated data with customer email masking |
-| `LDAP_ENGINEER_USERNAME` (`bob.engineer` by default) | Airflow Op, Superset Alpha | Read/write access across the lakehouse |
-| `svc_cube` | Non-human LDAP identity | Least-privilege access to required gold tables |
-
-## Pipeline
+**Requirements:** Linux `amd64`, Docker Engine with Compose v2, 16 GiB RAM minimum (24 GiB recommended), about 30 GiB of free disk, and `openssl`, `keytool`, `curl`, `jq`, and Python 3.
 
 ```bash
+# 1. add the local hostnames
+echo '127.0.0.1 airflow.lakehouse.local ranger.lakehouse.local superset.lakehouse.local cube.lakehouse.local authentik.lakehouse.local jupyter.lakehouse.local' | sudo tee -a /etc/hosts
+
+# 2. build and start everything (the first build compiles Ranger and OpenLDAP from source)
+./lakehouse.sh up
+
+# 3. trust platform/config/pki/ca.crt in your browser, then run the pipeline
 ./lakehouse.sh pipeline
-ROWS=5000 SEED=100 ./lakehouse.sh pipeline
 ```
 
-## DBeaver
+Generated passwords live in the ignored `.env` file. Sign in as `alice.analyst` (analyst) or `bob.engineer` (engineer); `akadmin` administers authentik.
 
-Create a Trino connection with:
+| Service | Address |
+| --- | --- |
+| JupyterHub | https://jupyter.lakehouse.local |
+| Airflow | https://airflow.lakehouse.local |
+| Superset | https://superset.lakehouse.local |
+| Cube | https://cube.lakehouse.local |
+| authentik | https://authentik.lakehouse.local |
+| Ranger | https://ranger.lakehouse.local |
+| Trino | https://127.0.0.1:8443 |
+| Control panel | http://127.0.0.1:8501 |
+| Spark master | http://127.0.0.1:8081 |
 
-```text
-URL:      jdbc:trino://127.0.0.1:8443/lakehouse/gold?SSL=true
-User:     value of LDAP_ANALYST_USERNAME or LDAP_ENGINEER_USERNAME in .env
-Password: corresponding LDAP password in .env
+DBeaver, backups, reset, and troubleshooting are in the [operations guide](docs/operations.md).
+
+```bash
+./lakehouse.sh ps        # status
+./lakehouse.sh logs      # logs
+./lakehouse.sh test      # static and integration tests
+./lakehouse.sh backup    # PostgreSQL, LDAP, and Garage backups
+./lakehouse.sh down      # stop
 ```
 
-Detailed TLS driver settings are in [operations](docs/operations.md#dbeaver).
+## Tech stack
 
-## Repository Map
+| Layer | Component | Version |
+| --- | --- | --- |
+| Table format and catalog | Apache Iceberg, Apache Polaris | 1.10.0, 1.6.0 |
+| Object storage | Garage | 2.3.0 |
+| Processing | Apache Spark | 3.5.8 |
+| SQL engine and governance | Trino, Apache Ranger | 481, 2.8.0 |
+| Orchestration | Apache Airflow, Redis | 3.3.0, 7.2.15 |
+| Identity | OpenLDAP, authentik | 2.6.13, 2025.10.1 |
+| Notebooks | JupyterHub, JupyterLab | 5.3.0, 4.4.9 |
+| Analytics | Cube, Apache Superset | 1.7.11, 6.1.0 |
+| Edge and data | Traefik, PostgreSQL | 3.7.1, 17.10 |
+| Operations UI | Streamlit | 1.59.2 |
+
+All versions are pinned in [`compose.yaml`](compose.yaml); nothing uses `:latest`.
+
+## Testing
+
+| Suite | What it checks |
+| --- | --- |
+| `./tests/static.sh` | Compose config and contract, Python compile checks, unit tests, Ranger policy JSON, image pins (no `:latest`), certificate files, and Markdown links. Runs in CI on every push. |
+| `./tests/integration.sh` | A live stack: service health and routing, LDAP binds, the Airflow SSO redirect and `svc_control` token, a Trino gold query as the analyst, and Polaris accepting machine identities while refusing the root credential and invalid tokens |
+| `RUN_PIPELINE_TEST=1 ./tests/integration.sh` | The whole pipeline end to end |
+
+## Repository map
 
 ```text
 platform/         Container images and service configuration
@@ -252,33 +362,12 @@ data-pipeline/    Python generator and Spark transformations
 analytics/        Cube models and Superset bootstrap code
 control-panel/    Streamlit pipeline operations UI
 operations/       Lifecycle and operational automation
-tests/            Static and integration smoke tests
+tests/            Static and integration tests
 docs/             Architecture, security, and operations
 ```
 
-Each domain includes its own README:
+Each domain has its own README: [platform](platform/README.md), [orchestration](orchestration/README.md), [data pipeline](data-pipeline/README.md), [analytics](analytics/README.md), [control panel](control-panel/README.md), [operations](operations/README.md). Deeper reading: [architecture](docs/architecture.md), [security model](docs/security.md), [operations guide](docs/operations.md), and the [documentation index](docs/README.md).
 
-- [Platform](platform/README.md)
-- [Orchestration](orchestration/README.md)
-- [Data pipeline](data-pipeline/README.md)
-- [Analytics](analytics/README.md)
-- [Control panel](control-panel/README.md)
-- [Operations](operations/README.md)
-- [Documentation index](docs/README.md)
+## License
 
-## Operations
-
-```bash
-./lakehouse.sh ps
-./lakehouse.sh logs
-./lakehouse.sh test
-./lakehouse.sh backup
-./lakehouse.sh down
-CONFIRM_RESET=yes ./lakehouse.sh reset
-```
-
-## Deep Dives
-
-- [Architecture](docs/architecture.md)
-- [Security model](docs/security.md)
-- [Operations guide](docs/operations.md)
+Licensed under the [Apache License 2.0](LICENSE). The stack builds on other open-source projects, listed in [NOTICE](NOTICE); each keeps its own license.
