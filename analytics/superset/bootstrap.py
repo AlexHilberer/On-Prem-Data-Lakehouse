@@ -316,7 +316,7 @@ with app.app_context():
                 "show_legend": True,
                 "rich_tooltip": True,
                 "show_value": True,
-                "number_format": "€,.2f",
+                "number_format": "\u20ac,.2f",
                 **parameters,
             }
         )

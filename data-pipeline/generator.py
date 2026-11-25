@@ -12,9 +12,9 @@ from psycopg2.extras import execute_values
 
 COUNTRIES = {
     "DE": (("Berlin", "East"), ("Munich", "South"), ("Hamburg", "North")),
-    "FR": (("Paris", "Île-de-France"), ("Lyon", "Auvergne-Rhône-Alpes")),
+    "FR": (("Paris", "\u00cele-de-France"), ("Lyon", "Auvergne-Rh\u00f4ne-Alpes")),
     "NL": (("Amsterdam", "North Holland"), ("Rotterdam", "South Holland")),
-    "PL": (("Warsaw", "Masovia"), ("Kraków", "Lesser Poland")),
+    "PL": (("Warsaw", "Masovia"), ("Krak\u00f3w", "Lesser Poland")),
     "ES": (("Madrid", "Community of Madrid"), ("Barcelona", "Catalonia")),
     "IT": (("Milan", "Lombardy"), ("Rome", "Lazio")),
 }

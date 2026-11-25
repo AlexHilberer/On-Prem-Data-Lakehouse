@@ -161,6 +161,7 @@ Bias: caution over speed. For trivial tasks, use judgment.
 ## Conventions
 
 - **Language specifics:** Follow the path-scoped rules for each language (Python, JS/TS, Bash, Java, C#). Where they are silent, follow the language's standard style guide and the patterns already in the file.
+- **Characters:** Tracked text is ASCII only: no em dashes, middle dots, smart quotes or emoji. Data that needs accents uses `\uXXXX` escapes so its value stays the same.
 - **Naming:** Use descriptive names over abbreviations, and the casing convention of the language. Booleans read as questions (`is_ready`, `hasAccess`). Functions are verbs, and types are nouns. Match the existing names in the codebase before introducing new patterns.
 - **Error handling:** Validate input at system boundaries (CLI args, files, network, external APIs), and trust internal code. Fail fast with specific error types and messages that name the bad value. Keep the cause when wrapping errors. Never swallow errors silently (no empty catch blocks). Catch only what you can handle, and let the rest propagate.
 - **Testing:** Use the test framework the project already uses. Every behavior change comes with a test. Tests are fast, deterministic, offline and independent of each other. Test behavior through public interfaces, not implementation details. Mock only at external boundaries (network, time, filesystem, subprocess).

@@ -23,7 +23,7 @@ it.
 flowchart LR
   Generator["Python generator<br/>period + seed + volume"]
 
-  subgraph Source["PostgreSQL · source"]
+  subgraph Source["PostgreSQL source"]
     Batches["ingestion_batches"]
     Customers["customers"]
     Products["products"]
@@ -32,7 +32,7 @@ flowchart LR
     Items["order_items"]
   end
 
-  subgraph Bronze["Iceberg · bronze"]
+  subgraph Bronze["Iceberg bronze"]
     BCustomers["customers"]
     BProducts["products"]
     BCampaigns["campaigns"]
@@ -40,13 +40,13 @@ flowchart LR
     BItems["order_items"]
   end
 
-  subgraph Silver["Iceberg · silver"]
+  subgraph Silver["Iceberg silver"]
     SCustomers["customers"]
     SProducts["products"]
     Lines["order_lines<br/>enriched monetary facts"]
   end
 
-  subgraph Gold["Iceberg · gold"]
+  subgraph Gold["Iceberg gold"]
     Sales["sales_performance<br/>order-line analytics"]
     Product["product_performance<br/>daily product rollup"]
     Customer["customer_360<br/>value + repeat behavior"]

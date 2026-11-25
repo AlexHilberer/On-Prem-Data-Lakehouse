@@ -16,7 +16,7 @@ ACTIVE_STATES = {"queued", "running"}
 
 st.set_page_config(
     page_title="Lakehouse Control Panel",
-    page_icon="🏔️",
+    page_icon=":mountain_snow:",
     layout="wide",
 )
 

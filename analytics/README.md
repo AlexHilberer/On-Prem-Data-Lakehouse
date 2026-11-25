@@ -18,11 +18,11 @@ PostgreSQL-compatible SQL interface.
 
 The idempotent Superset bootstrap creates:
 
-- **Executive Commerce** — revenue, profit, orders, AOV, trends, geography,
+- **Executive Commerce**: revenue, profit, orders, AOV, trends, geography,
   channels, and category contribution.
-- **Product & Sales** — category and brand performance, product rankings,
+- **Product & Sales**: category and brand performance, product rankings,
   channel mix, discounts, and margins.
-- **Customer & Operations** — customer value, repeat rate, acquisition,
+- **Customer & Operations**: customer value, repeat rate, acquisition,
   order outcomes, fulfillment, and masked customer detail.
 
 Twenty-one native Superset charts use a consistent dark executive theme,

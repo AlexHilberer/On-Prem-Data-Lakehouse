@@ -32,7 +32,7 @@ flowchart LR
   Generate --> Batch["Batch ID in XCom"]
   Batch --> SparkSubmit["spark_transform<br/>SparkSubmitOperator"]
   SparkSubmit --> Spark["Spark master + worker"]
-  Spark --> Iceberg["Bronze · Silver · Gold"]
+  Spark --> Iceberg["Bronze, Silver, Gold"]
 ```
 
 The DAG is unscheduled and can be triggered with:
