@@ -2,13 +2,6 @@
 
 **A fully self-hosted data lakehouse you can start with one command: Iceberg tables, single sign-on, governed access, and notebooks with Trino and Spark built in. It runs on one machine today and is shaped to grow onto several.**
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Validate infrastructure](https://github.com/ShollyWolly/OnPrem-Data-Lakehouse/actions/workflows/validate.yml/badge.svg)](https://github.com/ShollyWolly/OnPrem-Data-Lakehouse/actions/workflows/validate.yml)
-![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![Apache Iceberg](https://img.shields.io/badge/Apache-Iceberg-1E88E5)
-![Apache Spark](https://img.shields.io/badge/Apache-Spark-E25A1C?logo=apachespark&logoColor=white)
-![Trino](https://img.shields.io/badge/Trino-481-DD00A1)
-
 ![A notebook signed in as bob.engineer running %sql on Trino and a Spark session against Polaris](docs/images/notebook.png)
 
 *A JupyterLab notebook on the running stack. `%sql` runs on Trino and `spark_builder` is a pre-wired Spark session; both know who is signed in. Every screenshot on this page comes from the stack running locally on generated demo data.*
