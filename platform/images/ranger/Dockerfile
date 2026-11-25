@@ -12,6 +12,9 @@ RUN curl --fail --location --retry 5 "${RANGER_URL}" -o "apache-ranger-${RANGER_
     && curl --fail --location --retry 5 "${RANGER_URL}.sha512" -o ranger.sha512 \
     && sha512sum --check ranger.sha512 \
     && tar -xzf "apache-ranger-${RANGER_VERSION}.tar.gz" --strip-components=1
+# Workaround: the Kylin plugin needs an artifact that repo.spring.io no longer serves. See CLAUDE.md#pitfalls
+RUN sed -i '/<module>plugin-kylin<\/module>/d;/<module>ranger-kylin-plugin-shim<\/module>/d' pom.xml \
+    && perl -0pi -e 's#(</descriptor>)\n[ \t]*<descriptor>src/main/assembly/plugin-kylin\.xml</descriptor>#$1#g; s#\n[ \t]*<dependency>\s*<groupId>org\.apache\.ranger</groupId>\s*<artifactId>ranger-kylin-plugin(?:-shim)?</artifactId>(?:(?!</dependency>).)*</dependency>##gs' distro/pom.xml
 RUN --mount=type=cache,target=/root/.m2 \
     mvn --no-transfer-progress -Dmaven.test.skip=true -DskipJSTests=true \
       -DskipEnunciate=true -Denunciate.skip=true -Drat.skip=true \
