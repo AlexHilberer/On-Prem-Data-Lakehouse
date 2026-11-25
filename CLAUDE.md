@@ -142,7 +142,8 @@ Bias: caution over speed. For trivial tasks, use judgment.
 | `platform/config/jupyterhub/` | Hub config, `token_broker.py` (refreshes OIDC tokens), `lakehouse_notebook` kernel package (`spark_builder`, `get_token`, `%sql`) |
 | `platform/config/authentik/` | Blueprints for the LDAP source, the `lakehouse` OIDC provider and the machine service accounts |
 | `platform/config/polaris/` | `application.properties` (OIDC mapping) plus `auth-external.properties` / `auth-mixed.properties` (selected through `QUARKUS_CONFIG_LOCATIONS`) |
-| `docs/` | `architecture.md`, `security.md`, `operations.md` |
+| `LICENSE`, `NOTICE` | Apache License 2.0 and the list of projects the stack builds on |
+| `docs/` | `architecture.md`, `security.md`, `operations.md`, `images/` (README screenshots) |
 
 ### Invariants
 

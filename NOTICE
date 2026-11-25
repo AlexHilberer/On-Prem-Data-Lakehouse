@@ -1,0 +1,25 @@
+On-Premises Data Lakehouse
+Copyright 2026 Alexander Hilberer
+
+This repository is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It configures, builds and runs the following open-source projects. They are
+separate works that are not part of this repository, and each one is
+distributed under its own license; consult the project before redistributing it.
+
+  Apache Polaris      https://polaris.apache.org
+  Apache Iceberg      https://iceberg.apache.org
+  Apache Spark        https://spark.apache.org
+  Apache Airflow      https://airflow.apache.org
+  Apache Ranger       https://ranger.apache.org
+  Apache Superset     https://superset.apache.org
+  Trino               https://trino.io
+  Cube                https://cube.dev
+  authentik           https://goauthentik.io
+  JupyterHub          https://jupyter.org
+  OpenLDAP            https://www.openldap.org
+  Garage              https://garagehq.deuxfleurs.fr
+  Traefik             https://traefik.io
+  PostgreSQL          https://www.postgresql.org
+  Redis               https://redis.io
+  Streamlit           https://streamlit.io
