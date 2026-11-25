@@ -50,10 +50,8 @@ Alice (analyst) and Bob (engineer) run the identical notebook. The checks name t
 | **Airflow.** The pipeline runs triggered by an engineer and by the `svc_control` system user. | **Superset.** A dashboard served through the Cube semantic layer. |
 | ![Trino queries](docs/images/trino.png) | ![Ranger policies](docs/images/ranger.png) |
 | **Trino.** Finished queries attributed to the signed-in user. | **Ranger.** The policies that govern Trino. |
-| ![Spark master](docs/images/spark.png) | ![authentik users](docs/images/authentik-users.png) |
-| **Spark.** A notebook session running on the cluster as `bob.engineer`. | **authentik.** People and the machine identities. |
-| ![authentik login](docs/images/authentik-login.jpg) | ![Control panel](docs/images/control-panel.png) |
-| **Single sign-on.** One login page in front of every application. | **Control panel.** A small local UI to trigger and watch pipeline runs. |
+| ![authentik users](docs/images/authentik-users.png) | ![Control panel](docs/images/control-panel.png) |
+| **authentik.** People and the machine identities behind single sign-on. | **Control panel.** A small local UI to trigger and watch pipeline runs. |
 
 ## Architecture
 
